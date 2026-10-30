@@ -13,12 +13,12 @@ struct DashboardCanvas: View {
                 GeometryReader { canvas in
                     ZStack(alignment: .topLeading) {
                         Color.retroDesktop
-                        if editing {
+                        if editing && store.document.snapToGrid {
                             Canvas { context, size in
-                                for x in stride(from:0.0,through:size.width,by:32) {
+                                for x in stride(from:0.0,through:size.width,by:16) {
                                     var p=Path();p.move(to:CGPoint(x:x,y:0));p.addLine(to:CGPoint(x:x,y:size.height));context.stroke(p,with:.color(.white.opacity(0.10)),lineWidth:0.6)
                                 }
-                                for y in stride(from:0.0,through:size.height,by:32) {
+                                for y in stride(from:0.0,through:size.height,by:16) {
                                     var p=Path();p.move(to:CGPoint(x:0,y:y));p.addLine(to:CGPoint(x:size.width,y:y));context.stroke(p,with:.color(.white.opacity(0.10)),lineWidth:0.6)
                                 }
                             }.allowsHitTesting(false)
@@ -26,7 +26,7 @@ struct DashboardCanvas: View {
                         ForEach(store.document.widgets) { widget in
                             PlacedWidget(store:store,widget:widget,canvasSize:canvas.size,editing:editing)
                         }
-                    }
+                    }.coordinateSpace(name:"dashboard-canvas")
                 }
             }
             .frame(width:1280,height:720)
@@ -51,57 +51,59 @@ struct DashboardCanvas: View {
     }
 }
 
+struct WidgetActions: View {
+    @ObservedObject var store: DashboardStore
+    let widget: DashboardWidget
+    var body: some View {
+        Button("Configure…") { store.configure(widget.id) }
+        Button("Duplicate") { store.duplicate(widget.id) }
+        Button("Remove",role:.destructive) { store.remove(widget.id) }
+    }
+}
+
 struct PlacedWidget: View {
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
     let canvasSize: CGSize
     let editing: Bool
-    @State private var moveStart: WidgetFrame?
-    @State private var resizeStart: WidgetFrame?
+    @State private var start: WidgetFrame?
+    @State private var draft: WidgetFrame?
     var body: some View {
-        let frame=widget.frame
-        let width=frame.width*canvasSize.width
-        let height=frame.height*canvasSize.height
-        RetroWindow(title:widget.kind.title,suffix:suffix,selected:editing && store.selectedID==widget.id) {
+        let frame=draft ?? widget.frame
+        RetroWindow(title:widget.kind.title,suffix:suffix,selected:editing && store.selectedID==widget.id,
+                    onClose:editing ? { store.remove(widget.id) } : nil,
+                    onSelect:editing ? { store.selectedID=widget.id } : nil,
+                    onMove:editing ? { translation,ended in interact(translation,ended:ended,resizing:false) } : nil) {
             WidgetContent(store:store,widget:widget)
-        }
-        .overlay(alignment:.top) {
-            if editing {
-                Color.clear.frame(height:28).contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance:1).onChanged { value in
-                        store.selectedID=widget.id
-                        if moveStart == nil { moveStart=widget.frame }
-                        guard let start=moveStart else{return}
-                        store.change(widget.id) { $0.frame=WidgetFrame(x:start.x+value.translation.width/canvasSize.width,y:start.y+value.translation.height/canvasSize.height,width:start.width,height:start.height) }
-                    }.onEnded { _ in moveStart=nil;store.saveNow() })
-            }
         }
         .overlay(alignment:.bottomTrailing) {
             if editing {
                 Image(systemName:"arrow.up.left.and.arrow.down.right").font(.system(size:12,weight:.bold)).foregroundStyle(.white).padding(5).background(Color.retroPurple)
                     .contentShape(Rectangle()).accessibilityLabel("Resize \(widget.kind.title) widget")
-                    .gesture(DragGesture(minimumDistance:1).onChanged { value in
-                        store.selectedID=widget.id
-                        if resizeStart == nil { resizeStart=widget.frame }
-                        guard let start=resizeStart else{return}
-                        store.change(widget.id) { $0.frame=WidgetFrame(x:start.x,y:start.y,width:start.width+value.translation.width/canvasSize.width,height:start.height+value.translation.height/canvasSize.height) }
-                    }.onEnded { _ in resizeStart=nil;store.saveNow() })
+                    .gesture(DragGesture(minimumDistance:1,coordinateSpace:.named("dashboard-canvas"))
+                        .onChanged { interact($0.translation,ended:false,resizing:true) }
+                        .onEnded { interact($0.translation,ended:true,resizing:true) })
             }
         }
-        .frame(width:width,height:height)
-        .onTapGesture { if editing { store.selectedID=widget.id } }
+        .frame(width:frame.width*canvasSize.width,height:frame.height*canvasSize.height)
+        .onTapGesture { if editing && store.selectedID != widget.id { store.selectedID=widget.id } }
         .position(x:(frame.x+frame.width/2)*canvasSize.width,y:(frame.y+frame.height/2)*canvasSize.height)
+        .transaction { $0.animation=nil }
         .contextMenu {
-            if editing {
-                Button("Select") { store.selectedID=widget.id }
-                Button("Duplicate") { store.selectedID=widget.id;store.duplicateSelected() }
-                Button("Remove",role:.destructive) { store.selectedID=widget.id;store.removeSelected() }
-            } else { Button("Edit Layout…") { store.showEditor?() } }
+            if editing { WidgetActions(store:store,widget:widget) }
+            else { Button("Edit Layout…") { store.showEditor?() } }
         }
     }
-    var suffix: String {
-        if widget.kind == .agents { return "\(store.rows(for:widget).count) sessions" }
-        if widget.kind == .system { return store.system(for:widget).0 }
-        return ""
+    private func interact(_ translation:CGSize,ended:Bool,resizing:Bool) {
+        if start == nil { start=widget.frame; if store.selectedID != widget.id { store.selectedID=widget.id } }
+        guard let start else { return }
+        let dx=translation.width*1280/canvasSize.width,dy=translation.height*682/canvasSize.height
+        let result=resizing ? WidgetInteraction.resizing(start,dx:dx,dy:dy,kind:widget.kind,snap:store.document.snapToGrid) : WidgetInteraction.moving(start,dx:dx,dy:dy,snap:store.document.snapToGrid)
+        if ended { store.change(widget.id) { $0.frame=result };self.start=nil;draft=nil }
+        else { draft=result }
+    }
+    var suffix:String {
+        if widget.kind == .agents { let count=store.rows(for:widget).count;return "\(count) \(count == 1 ? "session" : "sessions")" }
+        return widget.kind == .system ? store.system(for:widget).0 : ""
     }
 }

@@ -5,8 +5,17 @@ import WokintoshCore
 
 typealias DashboardWidget = WokintoshCore.Widget
 
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case machines, personal, weather
+    var id:String { rawValue }
+    var title:String { switch self { case .machines:return "Machines";case .personal:return "Music & Calendar";case .weather:return "Weather" } }
+}
+
 @MainActor final class DashboardStore: ObservableObject {
     @Published var document: DashboardDocument { didSet { scheduleSave() } }
+    @Published var settingsPresented=false
+    @Published var settingsTab=SettingsTab.machines
+    @Published private var reviewedPreviewIDs=Set<String>()
     @Published var selectedID: UUID?
     @Published var feeds: [String: FeedStatus] = [:]
     @Published var refreshing = false
@@ -84,16 +93,21 @@ typealias DashboardWidget = WokintoshCore.Widget
         document.widgets.append(widget)
         selectedID = widget.id
     }
-    func removeSelected() {
-        document.widgets.removeAll { $0.id == selectedID }
-        selectedID = document.widgets.first?.id
+    func configure(_ id:UUID) { selectedID=id;showEditor?() }
+    func openSettings(_ tab:SettingsTab) { settingsTab=tab;showEditor?();settingsPresented=true }
+    func remove(_ id:UUID) { document.widgets.removeAll { $0.id == id };if selectedID == id { selectedID=document.widgets.first?.id } }
+    func removeSelected() { if let selectedID { remove(selectedID) } }
+    func duplicate(_ id:UUID) {
+        guard var copy=document.widgets.first(where:{$0.id == id}) else { return }
+        copy.id=UUID();copy.frame=WidgetFrame(x:copy.frame.x+0.025,y:copy.frame.y+0.025,width:copy.frame.width,height:copy.frame.height).clamped(for:copy.kind)
+        document.widgets.append(copy);selectedID=copy.id
     }
-    func duplicateSelected() {
-        guard let widget = selectedWidget else { return }
-        var duplicate = Widget(kind: widget.kind, frame: WidgetFrame(x: widget.frame.x + 0.025, y: widget.frame.y + 0.025, width: widget.frame.width, height: widget.frame.height).clamped(for: widget.kind))
-        duplicate.hostID=widget.hostID; duplicate.provider=widget.provider; duplicate.showFinished=widget.showFinished; duplicate.showHelpers=widget.showHelpers
-        document.widgets.append(duplicate); selectedID=duplicate.id
+    func duplicateSelected() { if let selectedID { duplicate(selectedID) } }
+    func reviewCompletion(_ row:SessionRow) {
+        if document.previewMode { reviewedPreviewIDs.insert(row.id) }
+        else { document.completions.review(row.id) }
     }
+    func reviewAllCompletions(for widget:Widget) { for row in rows(for:widget) where row.completionPending { reviewCompletion(row) } }
     func resetLayout() { document.widgets = DashboardDocument.defaultLayout.widgets; selectedID = document.widgets.first?.id }
 
     var hosts: [HostInfo] {
@@ -101,28 +115,60 @@ typealias DashboardWidget = WokintoshCore.Widget
         for feed in feeds.values { if var host = feed.snapshot?.host { host.name=feed.displayName;result[host.id] = host } }
         return result.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
-    func rows(for widget: Widget) -> [SessionRow] {
-        if document.previewMode { return previewRows().filter { (widget.provider == nil || $0.session.provider == widget.provider) && (widget.hostID == nil || $0.hostID == widget.hostID) } }
-        var rows: [String: SessionRow] = [:]
+    private func feedRows() -> [SessionRow] {
+        var rows:[String:SessionRow]=[:]
         for feed in feeds.values {
-            guard let snapshot = feed.snapshot else { continue }
-            if let source = widget.hostID, source != snapshot.host.id { continue }
+            guard let snapshot=feed.snapshot else { continue }
             for session in snapshot.sessions {
-                if let provider = widget.provider, provider != session.provider { continue }
-                if !widget.showHelpers && session.parentId != nil { continue }
-                // Do not swamp the ambient view with old inactive transcript records.
-                let age = Date().timeIntervalSince(session.updatedAt)
-                if !widget.showFinished && (session.state == .finished || session.state == .idle || (session.state == .unknown && age > 7200)) { continue }
-                if widget.showFinished && age > 86400 { continue }
-                let row = SessionRow(hostID: snapshot.host.id, hostName: feed.displayName, session: session, connected: feed.connected)
-                if let old = rows[row.id], old.connected && !row.connected { continue }
-                rows[row.id] = row
+                let row=SessionRow(hostID:snapshot.host.id,hostName:feed.displayName,session:session,connected:feed.connected)
+                if let old=rows[row.id],old.connected && !row.connected { continue }
+                rows[row.id]=row
             }
         }
         return Array(rows.values)
     }
+    func rows(for widget:Widget) -> [SessionRow] {
+        var raw:[String:SessionRow]=[:]
+        if document.previewMode {
+            for var row in previewRows() {
+                if reviewedPreviewIDs.contains(row.id) { row.completionPending=false }
+                raw[row.id]=row
+            }
+        } else {
+            for row in feedRows() { raw[row.id]=row }
+            for completion in document.completions.pending { raw[completion.id]=completion.row }
+        }
+        return raw.values.filter { row in
+            if let source=widget.hostID,source != row.hostID { return false }
+            if let provider=widget.provider,provider != row.session.provider { return false }
+            if !widget.showHelpers && row.session.parentId != nil { return false }
+            if row.completionPending { return true }
+            let age=Date().timeIntervalSince(row.session.updatedAt)
+            if !widget.showFinished && (row.session.state == .finished || row.session.state == .idle || (row.session.state == .unknown && age>7200)) { return false }
+            return !widget.showFinished || age<86400
+        }
+    }
+    func drives(for widget:Widget) -> [DriveReading] {
+        let value=system(for:widget).1
+        if let drives=value.drives { return drives }
+        guard value.diskFreeBytes != nil || value.diskTotalBytes != nil else { return [] }
+        return [DriveReading(id:"/",name:"Startup disk",mountPoint:"/",freeBytes:value.diskFreeBytes,totalBytes:value.diskTotalBytes)]
+    }
+    func selectedDrives(for widget:Widget) -> [DriveReading] {
+        let available=drives(for:widget)
+        guard let ids=widget.systemOptions.driveIDs else { return Array(available.prefix(1)) }
+        return ids.map { id in available.first(where:{$0.id == id}) ?? DriveReading(id:id,name:URL(fileURLWithPath:id).lastPathComponent,mountPoint:id) }
+    }
+    func calendarEvents(for widget:Widget) -> [CalendarEntry] {
+        if document.previewMode {
+            let start=Calendar.current.date(byAdding:.day,value:1,to:Calendar.current.startOfDay(for:.now))!.addingTimeInterval(9.5*3600)
+            let info=CalendarInfo(events:[CalendarEntry(id:"preview",title:"Planning",startDate:start,endDate:start.addingTimeInterval(3600),isAllDay:false,calendarID:"personal",calendarTitle:"Personal")],authorized:true)
+            return info.events(for:widget.calendarOptions)
+        }
+        return native.calendar.events(for:widget.calendarOptions)
+    }
     func system(for widget: Widget) -> (String, SystemReading, Bool) {
-        if document.previewMode { return ("Minion", SystemReading(cpuPercent: 18, memoryUsedBytes: 12*1024*1024*1024, memoryTotalBytes: 24*1024*1024*1024, diskFreeBytes: 241*1024*1024*1024, diskTotalBytes: 512*1024*1024*1024), true) }
+        if document.previewMode { return ("Minion", SystemReading(cpuPercent: 18, memoryUsedBytes: 12*1024*1024*1024, memoryTotalBytes: 24*1024*1024*1024, diskFreeBytes: 241*1024*1024*1024, diskTotalBytes: 512*1024*1024*1024, drives:[DriveReading(id:"/",name:"Macintosh HD",mountPoint:"/",freeBytes:241*1024*1024*1024,totalBytes:512*1024*1024*1024),DriveReading(id:"/Volumes/Archive",name:"Archive",mountPoint:"/Volumes/Archive",freeBytes:700*1024*1024*1024,totalBytes:2*1024*1024*1024*1024)]), true) }
         return SystemPresentation.resolve(hostID: widget.hostID, feeds: feeds)
     }
     var offlineCount: Int { feeds.values.filter { $0.error != nil }.count }
@@ -133,7 +179,12 @@ typealias DashboardWidget = WokintoshCore.Widget
         guard !refreshing else { return }
         refreshing=true
         defer { refreshing=false }
-        if !document.previewMode { await refreshFeeds(); await native.refresh(document: document) }
+        if !document.previewMode {
+            await refreshFeeds()
+            var completions=document.completions;completions.ingest(feedRows())
+            if completions != document.completions { document.completions=completions }
+            await native.refresh(document:document)
+        }
     }
     private func refreshFeeds() async {
         struct Request: Sendable { var id: String; var name: String; var executable: String; var arguments: [String] }
@@ -174,7 +225,7 @@ typealias DashboardWidget = WokintoshCore.Widget
         do {
             let helpers=dataDirectory.appendingPathComponent("bin",isDirectory:true)
             try FileManager.default.createDirectory(at:helpers,withIntermediateDirectories:true)
-            let installed=helpers.appendingPathComponent("wokintosh-agent.py")
+            let installed=helpers.appendingPathComponent("Wokintosh-status-observer.py")
             try Data(contentsOf:collector).write(to:installed,options:.atomic)
             try FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:installed.path)
             let result = try await Task.detached { try CommandRunner.run(python, arguments: [installed.path, "install-hooks", "--provider", provider], timeout: 5) }.value
@@ -185,7 +236,7 @@ typealias DashboardWidget = WokintoshCore.Widget
         let names=["Calendar sync", "Collector tests", "Window layout", "Auth review", "Weather cache", "Music metadata", "Layout persistence", "Release notes", "Parser coverage", "Linux collector", "Artwork cache", "Window placement"]
         return names.enumerated().map { index, title in
             let provider = [0,3,5,7,9,11].contains(index) ? "claude" : "codex"
-            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : .working, updatedAt: Date().addingTimeInterval(Double(-index*17)), activity: index < 2 ? "Approval needed" : "Working"))
+            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : .working), updatedAt: Date().addingTimeInterval(Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : "Working")),completionPending:index>=2 && index<4)
         }
     }
 }

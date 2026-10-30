@@ -6,8 +6,8 @@ A Color Classic-style dashboard for a small Mac display. Arrange independently r
 
 1. Move **Wokintosh.app** to Applications and open it. Requires an Apple silicon Mac running macOS 14 or later.
 2. Click **Wokintosh** in the dashboard menu bar, or press **Command-comma**, to open the Layout Editor.
-3. Choose the dock's display and click **Present on Display**. Presentation mode and display selection are remembered. **Escape** returns to a normal window.
-4. Add widgets from the library. Move each by its title bar; resize with its purple corner or enter dimensions in the inspector. Widgets adapt the detail and row count to their dimensions. Text size and a calibrated actual-size preview help judge a five-inch panel.
+3. Choose the dock's display and click **Present on Display**. Native fullscreen hides the macOS menu bar and Dock; disable **Use native fullscreen** for a borderless window instead. Presentation mode and display selection are remembered. **Escape** returns to a normal window.
+4. Add widgets from the library. Move each by its title bar; resize with its purple corner or enter dimensions in the inspector. Optional 16-pixel snapping keeps edges aligned. The close box removes a widget; the right title control and the same Configure context menu on preview/sidebar open its inspector. Widgets adapt the detail and row count to their dimensions. Text size and a calibrated actual-size preview help judge a five-inch panel.
 
 Layouts are saved automatically in `~/Library/Application Support/Wokintosh/layout.json`. If a saved file cannot be read, the app shows defaults and preserves the original as a backup before saving changes. Removing a widget does not delete any source data.
 
@@ -25,9 +25,9 @@ install -m 755 ./wokintosh-agent "$HOME/.local/bin/wokintosh-agent"
 "$HOME/.local/bin/wokintosh-agent" snapshot --json
 ```
 
-In **Machines & Live Sources**, add a friendly name, an SSH alias or `user@host`, and the collector path (default `~/.local/bin/wokintosh-agent`). SSH keys and host trust must already work from Terminal; the dashboard uses batch mode and will show a connection error rather than ask for a password. Local collection also needs Python 3.10+; Homebrew and standard Python installation paths are detected.
+In **Settings → Machines**, add a friendly name, an SSH alias or `user@host`, and the collector path (default `~/.local/bin/wokintosh-agent`). SSH keys and host trust must already work from Terminal; the dashboard uses batch mode and will show a connection error rather than ask for a password. Local collection also needs Python 3.10+; Homebrew and standard Python installation paths are detected.
 
-Each row is a distinct session/task, including multiple sessions of the same harness on one machine. The widget can filter by machine and harness, include recent finished sessions and helper agents, and sort sessions needing attention first. Overflow is always visible. Unknown or disconnected state is shown explicitly; bars are used only for measured system readings.
+Each row is a distinct session/task, including multiple sessions of the same harness on one machine. The widget can filter by machine and harness and optionally include reviewed/recent inactive sessions and helper agents. Sessions needing attention come first; completed work stays highlighted **Done** until you mark it reviewed with the check button. Done notices survive restarting Wokintosh; new activity supersedes the previous completion. Initial discovery includes completions from the last 24 hours. Overflow is always visible. Unknown or disconnected state is shown explicitly; bars are used only for measured system readings.
 
 ### Precise attention signals
 
@@ -38,16 +38,16 @@ Read-only transcript discovery works without changing agent settings. For reliab
 ~/.local/bin/wokintosh-agent install-hooks --provider claude
 ```
 
-Existing settings are preserved and backed up. Hooks return neutral JSON and never approve, deny, block, or continue agent work. Restart agent sessions after installation so they load the observers. Codex uses `~/.codex/hooks.json`; Claude Code uses `~/.claude/settings.json`. The collector stores bounded summaries in the platform's Wokintosh state directory, not full transcripts. Provider formats can change; unfamiliar or stale lifecycle state remains unknown rather than inventing progress.
+**Enable / Update Hooks** in Settings → Machines installs or refreshes clearly named Wokintosh observers. Both providers receive a Wokintosh status message; commands identify Wokintosh explicitly. Existing settings are preserved and backed up. Hooks return neutral JSON and never approve, deny, block, or continue agent work. For Codex, review and trust new or changed observers in `/hooks` before they can run. Restart the client and resume existing conversations after installation to ensure observers load; no new conversation is required. Existing sessions are discovered without restarting, but earlier hook events are not replayed. See [Codex hook trust](https://learn.chatgpt.com/docs/hooks). Codex uses `~/.codex/hooks.json`; Claude Code uses `~/.claude/settings.json`. The collector stores bounded summaries in the platform's Wokintosh state directory, not full transcripts. Provider formats can change; unfamiliar or stale lifecycle state remains unknown rather than inventing progress.
 
 The initial collector bounds discovery to recent files and caches unchanged parses. It is intended for an ambient view of active work, not a complete searchable transcript archive.
 
 ## Personal widgets
 
 - **Apple Music:** click **Connect Apple Music** while Music is running and grant macOS automation access. Wokintosh reads the actual track and color artwork. Polling does not launch Music. Playback buttons control Music only when clicked.
-- **Calendar:** click **Enable Calendar** and grant EventKit access. Upcoming events are read locally. Permission is never requested just by launching Wokintosh.
-- **Weather:** search for an explicit city in source settings and choose Celsius or Fahrenheit. No device location is inferred. Weather is provided by [Open-Meteo](https://open-meteo.com/); place search uses [GeoNames](https://www.geonames.org/). See [Open-Meteo terms and attribution](https://open-meteo.com/en/terms). Cached weather is marked offline when refresh fails.
-- **System:** select this Mac or a connected agent machine. CPU, memory and storage are measured by the collector. Unavailable readings remain blank rather than simulated.
+- **Calendar:** click **Enable Calendar** and grant EventKit access. Upcoming events are read locally. In the widget inspector choose individual calendars (with account/source labels), include or exclude all-day events, and select **Only next event**. For a personal + work timed-event view, select those two calendars and turn all-day events off. Filtering happens before the event limit. Permission is never requested just by launching Wokintosh.
+- **Weather:** open **Settings → Weather** to search for an explicit city and choose Celsius or Fahrenheit. No device location is inferred. Weather is provided by [Open-Meteo](https://open-meteo.com/); place search uses [GeoNames](https://www.geonames.org/). See [Open-Meteo terms and attribution](https://open-meteo.com/en/terms). The widget’s source-settings button opens the Weather tab directly. Cached weather is marked offline when refresh fails.
+- **System:** select this Mac or a connected agent machine. Choose CPU, memory and individual mounted drives in the same widget inspector. Multiple drives can be shown together; enlarge the widget to reveal additional readings. CPU, memory and storage are measured by the collector. Update remote collectors for drive inventory; older collectors still supply their original disk reading. Drive selections identify mount points; a missing selected mount shows unavailable data. Unavailable readings remain blank rather than simulated.
 - **Clock:** follows the Mac's locale and time settings. A menu-bar clock remains visible independently of the optional clock widget.
 
 This is a locally signed development build, not an App Store/notarized release. No account or telemetry service is included. Physical legibility should be checked on the actual Wokyis panel at your usual viewing distance; its native resolution is 1280×720.
