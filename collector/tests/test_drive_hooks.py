@@ -3,6 +3,9 @@ import copy
 import importlib.util
 import json
 import shutil
+import subprocess
+import sys
+import textwrap
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -24,22 +27,57 @@ class DriveTests(unittest.TestCase):
                  patch.object(agent.shutil, 'disk_usage', side_effect=usage or (lambda path: USAGE)):
                 return agent.make_snapshot(home, home / 'state', datetime.now(timezone.utc))
 
+    def test_blocked_extra_volume_cannot_prevent_healthy_snapshot(self):
+        # A filesystem stat on this mounted share would block for 60 seconds.
+        # The whole real snapshot must still complete within the process deadline.
+        script = textwrap.dedent("""
+            import importlib.util, json, tempfile, time
+            from datetime import datetime, timezone
+            from pathlib import Path
+            from types import SimpleNamespace
+            spec = importlib.util.spec_from_file_location('collector', SCRIPT_PATH)
+            agent = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(agent)
+            agent.platform.system = lambda: 'Darwin'
+            agent.command_output = lambda args: 'server:/share 500 300 200 60% /Volumes/Slow' if args == ['df', '-P', '-k'] else ''
+            def usage(path):
+                if str(path) == '/Volumes/Slow':
+                    time.sleep(60)
+                return SimpleNamespace(total=1000, used=600, free=400)
+            agent.shutil.disk_usage = usage
+            with tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                log = home / '.codex/sessions/healthy.jsonl'
+                log.parent.mkdir(parents=True)
+                now = datetime.now(timezone.utc)
+                log.write_text(json.dumps({'type': 'session_meta', 'timestamp': now.isoformat(), 'payload': {'id': 'healthy', 'cwd': '/src'}}) + chr(10))
+                print(json.dumps(agent.make_snapshot(home, home / 'state', now)))
+        """).replace('SCRIPT_PATH', repr(str(Path(agent.__file__).resolve())))
+        try:
+            result = subprocess.run([sys.executable, '-c', script], capture_output=True,
+                                    text=True, timeout=3, check=True)
+        except subprocess.TimeoutExpired:
+            self.fail('blocked extra drive prevented healthy host snapshot')
+        snapshot = json.loads(result.stdout)
+        self.assertEqual([item['id'] for item in snapshot['sessions']], ['healthy'])
+        self.assertEqual(snapshot['system']['drives'][-1], {
+            'id': '/Volumes/Slow', 'name': 'Slow', 'mountPoint': '/Volumes/Slow',
+            'freeBytes': 204800, 'totalBytes': 512000})
+
     def test_macos_measures_root_and_external_volumes_with_spaces(self):
         output = '''Filesystem 1024-blocks Used Available Capacity Mounted on
 /dev/disk3s1 100 50 50 50% /
 /dev/disk3s5 100 50 50 50% /System/Volumes/Data
-/dev/disk9s1 100 50 50 50% /Volumes/Work Drive
-/dev/disk10s1 100 50 50 50% /Volumes/Backup\\040Disk
-/dev/disk9s1 100 50 50 50% /Volumes/Work Drive
+/dev/disk9s1 2000 1400 600 70% /Volumes/Work Drive
+/dev/disk10s1 3000 1800 1200 60% /Volumes/Backup\\040Disk
+/dev/disk9s1 2000 1400 600 70% /Volumes/Work Drive
 '''
-        values = {'/': USAGE, '/Volumes/Work Drive': shutil._ntuple_diskusage(2000, 1400, 600),
-                  '/Volumes/Backup Disk': shutil._ntuple_diskusage(3000, 1800, 1200)}
-        snapshot = self.snapshot('Darwin', output, lambda path: values.get(str(path), USAGE))
+        snapshot = self.snapshot('Darwin', output)
         self.assertIn('drives', snapshot['system'], 'snapshot must expose measured drive selections')
         self.assertEqual(snapshot['system']['drives'], [
             {'id': '/', 'name': 'System', 'mountPoint': '/', 'freeBytes': 400, 'totalBytes': 1000},
-            {'id': '/Volumes/Backup Disk', 'name': 'Backup Disk', 'mountPoint': '/Volumes/Backup Disk', 'freeBytes': 1200, 'totalBytes': 3000},
-            {'id': '/Volumes/Work Drive', 'name': 'Work Drive', 'mountPoint': '/Volumes/Work Drive', 'freeBytes': 600, 'totalBytes': 2000}])
+            {'id': '/Volumes/Backup Disk', 'name': 'Backup Disk', 'mountPoint': '/Volumes/Backup Disk', 'freeBytes': 1228800, 'totalBytes': 3072000},
+            {'id': '/Volumes/Work Drive', 'name': 'Work Drive', 'mountPoint': '/Volumes/Work Drive', 'freeBytes': 614400, 'totalBytes': 2048000}])
         self.assertEqual(snapshot['schemaVersion'], 1)
         self.assertEqual(snapshot['system']['diskFreeBytes'], 400)
         self.assertEqual(snapshot['system']['diskTotalBytes'], 1000)
@@ -76,7 +114,7 @@ tmpfs 100 50 50 50% /mnt/temporary
                 raise OSError('volume unavailable')
             return USAGE
         try:
-            snapshot = self.snapshot('Darwin', '/dev/disk9 100 50 50 50% /Volumes/Locked', usage)
+            snapshot = self.snapshot('Darwin', '/dev/disk9 100 50 unavailable 50% /Volumes/Locked', usage)
         except OSError:
             self.fail('unreadable disk must not abort a healthy snapshot')
         self.assertIn('drives', snapshot['system'])
@@ -86,7 +124,7 @@ tmpfs 100 50 50 50% /mnt/temporary
             'freeBytes': None, 'totalBytes': None})
         self.assertEqual(snapshot['system']['drives'][0]['freeBytes'], 400)
 
-    def test_inventory_bounds_measurement_to_64_user_volumes(self):
+    def test_inventory_bounds_emitted_user_volumes_to_64(self):
         output = '\n'.join(f'/dev/disk{i} 100 50 50 50% /Volumes/Drive{i:03}' for i in range(100))
         snapshot = self.snapshot('Darwin', output)
         self.assertIn('drives', snapshot['system'])

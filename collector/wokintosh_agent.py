@@ -351,8 +351,8 @@ def disk_metrics(path):
 
 
 def mounted_drives():
-    """Root plus at most 64 user volumes; measure space instead of trusting df counts."""
-    mounts = set()
+    """Root plus 64 user volumes; use bounded df measurements for added mounts."""
+    mounts = {}
     system = platform.system()
     for line in command_output(['df', '-P', '-k']).splitlines():
         fields = line.split(maxsplit=5)
@@ -378,10 +378,20 @@ def mounted_drives():
                 continue
         else:
             continue
-        mounts.add(mount)
-    return [{'id': mount, 'name': 'System' if mount == '/' else Path(mount).name,
-             'mountPoint': mount, **disk_metrics(mount)}
-            for mount in ['/'] + sorted(mounts)[:64]]
+        try:
+            total, free = int(fields[1]) * 1024, int(fields[3]) * 1024
+            if total < 0 or free < 0:
+                raise ValueError('negative disk measurement')
+            metrics = {'freeBytes': free, 'totalBytes': total}
+        except ValueError:
+            metrics = {'freeBytes': None, 'totalBytes': None}
+        mounts[mount] = metrics
+    # df already obtains filesystem statistics in a process with a two-second
+    # timeout. Restatting each user mount here can block indefinitely on stale
+    # network volumes and prevent otherwise healthy session snapshots.
+    return [{'id': '/', 'name': 'System', 'mountPoint': '/', **disk_metrics('/')}]+[
+        {'id': mount, 'name': Path(mount).name, 'mountPoint': mount, **mounts[mount]}
+        for mount in sorted(mounts)[:64]]
 
 
 def system_stats(home, state_dir):
