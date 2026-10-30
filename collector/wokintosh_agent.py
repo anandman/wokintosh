@@ -80,7 +80,8 @@ def base_session(identity, provider, cwd, updated, title=None, parent=None):
     return {'id': clean(identity, 180), 'provider': provider,
             'title': clean(title or f'{project} · {str(identity)[:6]}', 90),
             'project': clean(project, 90), 'state': 'unknown',
-            'updatedAt': stamp(updated), 'activity': '', 'parentId': parent}
+            'updatedAt': stamp(updated), 'activity': '',
+            'parentId': (clean(parent, 180) or None) if isinstance(parent, str) else None}
 
 
 def finalize(session, now):
@@ -496,6 +497,8 @@ def make_snapshot(home, state_dir, now, host_name=None):
                         session = parser(path)
                 else:
                     session = parser(path)
+                # Fresh parses must satisfy the same protocol contract as cache hits.
+                session = valid_session(session, provider)
                 next_cache[key_hash] = {'fingerprint': fingerprint, 'session': session}
                 session = finalize(dict(session), now) if session else None
                 if session:

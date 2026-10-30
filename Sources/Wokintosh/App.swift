@@ -20,7 +20,7 @@ import SwiftUI
         makeMenu()
         store.showEditor = { [weak self] in self?.openEditor() }
         store.presentDashboard = { [weak self] id in self?.present(on: id) }
-        let window=NSWindow(contentRect: NSRect(x:0,y:0,width:1280,height:720), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
+        let window=DashboardWindow(contentRect: NSRect(x:0,y:0,width:1280,height:720), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
         window.title="Wokintosh"
         window.identifier=NSUserInterfaceItemIdentifier("wokintosh-dashboard")
         window.contentView=NSHostingView(rootView: DashboardCanvas(store: store, editing: false))

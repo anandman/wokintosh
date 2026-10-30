@@ -21,6 +21,33 @@ class CollectorTests(unittest.TestCase):
         return path
     def codex(self, identity="a", event="task_started"):
         return [{"type":"session_meta","payload":{"id":identity,"cwd":"/src/project"},"timestamp":STAMP}, {"type":"event_msg","payload":{"type":event},"timestamp":STAMP}]
+    def test_malformed_parent_metadata_keeps_healthy_snapshot_decodable(self):
+        self.log(".codex/sessions/healthy.jsonl", self.codex("healthy"))
+        for index, parent in enumerate([{"unexpected": "object"}, ["array"], 12, "  parent\n  id  ", "x" * 240]):
+            rows = self.codex(f"child-{index}")
+            rows[0]["payload"]["source"] = {"subagent": {"thread_spawn": {"parent_thread_id": parent}}}
+            self.log(f".codex/sessions/child-{index}.jsonl", rows)
+        for poll in range(2):
+            snapshot = agent.make_snapshot(self.root, self.root/"state", NOW)
+            sessions = {item["id"]: item for item in snapshot["sessions"]}
+            self.assertEqual(len(sessions), 6)
+            self.assertEqual(sessions["healthy"]["state"], "working")
+            for index, expected in enumerate([None, None, None, "parent id", "x" * 180]):
+                self.assertEqual(sessions[f"child-{index}"]["parentId"], expected)
+            self.assertTrue(all(agent.valid_session(item) is not None for item in sessions.values()))
+            # This is the String? contract required by the Swift Snapshot decoder.
+            self.assertTrue(all(item["parentId"] is None or isinstance(item["parentId"], str) for item in sessions.values()))
+
+    def test_invalid_fresh_parse_is_not_cached_or_emitted(self):
+        self.log(".codex/sessions/healthy.jsonl", self.codex("healthy"))
+        invalid = agent.base_session("bad", "codex", "", NOW)
+        invalid["state"] = {"invalid": "state"}
+        with patch.object(agent, "read_codex", return_value=invalid):
+            snapshot = agent.make_snapshot(self.root, self.root/"state", NOW)
+        self.assertEqual(snapshot["sessions"], [])
+        entries = json.loads((self.root/"state/parse-cache.json").read_text())["entries"]
+        self.assertTrue(all(entry["session"] is None for entry in entries.values()))
+
     def test_codex_started_session_is_working(self):
         result=agent.read_codex(self.log("a.jsonl",self.codex()),NOW)
         self.assertIsNotNone(result)

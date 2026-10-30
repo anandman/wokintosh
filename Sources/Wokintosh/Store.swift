@@ -5,15 +5,6 @@ import WokintoshCore
 
 typealias DashboardWidget = WokintoshCore.Widget
 
-struct FeedStatus {
-    var name: String
-    var snapshot: Snapshot?
-    var error: String?
-    var refreshedAt: Date?
-    var connected: Bool { snapshot != nil && error == nil }
-    var displayName: String { name == "This Mac" ? (snapshot?.host.name ?? name) : name }
-}
-
 @MainActor final class DashboardStore: ObservableObject {
     @Published var document: DashboardDocument { didSet { scheduleSave() } }
     @Published var selectedID: UUID?
@@ -132,8 +123,7 @@ struct FeedStatus {
     }
     func system(for widget: Widget) -> (String, SystemReading, Bool) {
         if document.previewMode { return ("Minion", SystemReading(cpuPercent: 18, memoryUsedBytes: 12*1024*1024*1024, memoryTotalBytes: 24*1024*1024*1024, diskFreeBytes: 241*1024*1024*1024, diskTotalBytes: 512*1024*1024*1024), true) }
-        let feed = widget.hostID.flatMap { id in feeds.values.first { $0.snapshot?.host.id == id } } ?? feeds["local"]
-        return (feed?.displayName ?? "This Mac", feed?.snapshot?.system ?? SystemReading(), feed?.connected ?? false)
+        return SystemPresentation.resolve(hostID: widget.hostID, feeds: feeds)
     }
     var offlineCount: Int { feeds.values.filter { $0.error != nil }.count }
     var collectorURL: URL? { Bundle.main.url(forResource: "wokintosh_agent", withExtension: "py") }
