@@ -274,13 +274,32 @@ private actor CalendarSource {
     private let store = EKEventStore()
     private var cached: CalendarInfo?
     private var fetchedAt = Date.distantPast
+    private var changeObserver: NSObjectProtocol?
+
+    deinit {
+        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
+    }
+
+    private func observeStoreChangesIfNeeded() {
+        guard changeObserver == nil else { return }
+        // The callback transfers only this actor reference, never EventKit objects or the notification.
+        changeObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: nil) { [weak self] _ in
+            Task { await self?.invalidateCache() }
+        }
+    }
+
+    private func invalidateCache() {
+        cached = nil
+        fetchedAt = .distantPast
+    }
 
     func requestAccess() async -> CalendarInfo {
         do {
             guard try await store.requestFullAccessToEvents() else {
                 return CalendarInfo(status: "Calendar access denied. Enable it in System Settings → Privacy & Security → Calendars")
             }
-            fetchedAt = .distantPast
+            // Explicit Enable refreshes inventory even when no Calendar widget is visible.
+            invalidateCache()
             return read()
         } catch {
             return CalendarInfo(status: "Calendar access unavailable: \(error.localizedDescription)")
@@ -296,18 +315,27 @@ private actor CalendarSource {
         case .writeOnly: return CalendarInfo(status: "Enable full Calendar access to read upcoming events")
         @unknown default: return CalendarInfo(status: "Calendar access unavailable")
         }
+        observeStoreChangesIfNeeded()
         let now = Date()
         if let cached, now.timeIntervalSince(fetchedAt) < 60 { return cached }
+        let calendars = store.calendars(for: .event).map { calendar in
+            CalendarDescriptor(id: calendar.calendarIdentifier, title: calendar.title, sourceTitle: calendar.source.title)
+        }.sorted { first, second in
+            if first.sourceTitle != second.sourceTitle { return first.sourceTitle < second.sourceTitle }
+            if first.title != second.title { return first.title < second.title }
+            return first.id < second.id
+        }
         let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 86400)
         let predicate = store.predicateForEvents(withStart: now, end: end, calendars: nil)
         let events = store.events(matching: predicate)
             .filter { $0.endDate > now && $0.status != .canceled }
             .sorted { $0.startDate == $1.startDate ? ($0.title ?? "") < ($1.title ?? "") : $0.startDate < $1.startDate }
-            .prefix(12)
             .map { event in CalendarEntry(id: "\(event.eventIdentifier ?? event.calendarItemIdentifier):\(event.startDate.timeIntervalSince1970)",
                                          title: event.title?.isEmpty == false ? event.title : "Untitled event",
-                                         startDate: event.startDate, endDate: event.endDate, isAllDay: event.isAllDay) }
-        let result = CalendarInfo(events: Array(events), status: events.isEmpty ? "No events in the next 7 days" : "Upcoming · next 7 days", authorized: true)
+                                         startDate: event.startDate, endDate: event.endDate, isAllDay: event.isAllDay,
+                                         calendarID: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title) }
+        // Keep every candidate in this bounded seven-day window; widgets filter before applying their own limits.
+        let result = CalendarInfo(events: events, status: events.isEmpty ? "No events in the next 7 days" : "Upcoming · next 7 days", authorized: true, calendars: calendars)
         cached = result
         fetchedAt = now
         return result
