@@ -23,6 +23,23 @@ public struct CalendarEntry: Identifiable, Equatable, Sendable {
         self.id = id; self.title = title; self.startDate = startDate; self.endDate = endDate; self.isAllDay = isAllDay
     }
 }
+public extension CalendarEntry {
+    func compactDateLabel(relativeTo now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let format = DateFormatter()
+        format.locale=locale; format.calendar=calendar; format.timeZone=calendar.timeZone
+        format.dateStyle = .none; format.timeStyle = .short
+        let time = isAllDay ? "All day" : format.string(from: startDate)
+        if calendar.isDate(startDate, inSameDayAs: now) { return time }
+        let day: String
+        if let tomorrow=calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(startDate, inSameDayAs: tomorrow) {
+            day="Tomorrow"
+        } else {
+            format.setLocalizedDateFormatFromTemplate("EEE")
+            day=format.string(from: startDate)
+        }
+        return "\(day) · \(time)"
+    }
+}
 public struct CalendarInfo: Equatable, Sendable {
     public var events: [CalendarEntry]; public var status: String; public var authorized: Bool
     public init(events: [CalendarEntry] = [], status: String = "Enable Calendar to show upcoming events", authorized: Bool = false) {

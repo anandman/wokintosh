@@ -44,6 +44,13 @@ public struct SessionRow: Identifiable, Equatable, Sendable {
 }
 public struct AgentPresentation {
     public var visible: [SessionRow]; public var hiddenCount: Int; public var attentionCount: Int; public var workingCount: Int
+    public var hiddenAttentionCount: Int {
+        attentionCount-visible.filter { $0.connected && $0.session.state == .needsAttention }.count
+    }
+    public var overflowLabel: String? {
+        if hiddenAttentionCount > 0 { return "+\(hiddenCount) more · \(hiddenAttentionCount) \(hiddenAttentionCount == 1 ? "needs" : "need") you" }
+        return hiddenCount > 0 ? "+\(hiddenCount) more \(hiddenCount == 1 ? "session" : "sessions")" : nil
+    }
     public static func make(rows: [SessionRow], capacity: Int, showFinished: Bool = false) -> AgentPresentation {
         let filtered = rows.filter { showFinished || ($0.session.state != .finished && $0.session.state != .idle) }
         let sorted = filtered.sorted {

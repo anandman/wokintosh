@@ -58,4 +58,15 @@ final class NativeSourceTests: XCTestCase {
         XCTAssertEqual(URLComponents(url: search, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "name" }?.value, "São Paulo & Coast")
         XCTAssertNil(NativeSourceRequest.geocodingURL(query: " x "))
     }
+    func testCompactCalendarDistinguishesTodayTomorrowAndLaterDays() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: 18))!
+        for (day, allDay, expected) in [(29, false, "9:30\u{202F}AM"), (30, false, "Tomorrow · 9:30\u{202F}AM"), (2, true, "Mon · All day")] {
+            let start = calendar.date(from: DateComponents(year: 2026, month: day == 2 ? 11 : 10, day: day, hour: 9, minute: 30))!
+            let event = CalendarEntry(id: "event", title: "Event", startDate: start, endDate: start, isAllDay: allDay)
+            XCTAssertEqual(event.compactDateLabel(relativeTo: now, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")), expected)
+        }
+    }
+
 }

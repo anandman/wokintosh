@@ -46,9 +46,7 @@ struct AgentWidget: View {
                     Spacer(minLength:0)
                 }
                 HStack(spacing:10) {
-                    let hiddenAttention=page.attentionCount-page.visible.filter{$0.connected && $0.session.state == .needsAttention}.count
-                    if hiddenAttention>0 {Text("+\(hiddenAttention) more \(hiddenAttention == 1 ? "needs" : "need") you").font(retroFont(20*t)).foregroundStyle(.orange)}
-                    else if page.hiddenCount > 0 { Text("+\(page.hiddenCount) more \(page.hiddenCount == 1 ? "session" : "sessions")").font(retroFont(20*t)) }
+                    if let overflow=page.overflowLabel { Text(overflow).font(retroFont(20*t)).foregroundStyle(page.hiddenAttentionCount > 0 ? .orange : .primary) }
                     if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) offline").font(retroFont(18*t)).foregroundStyle(.orange) }
                     Spacer(minLength:0)
                 }.frame(height:25*t).lineLimit(1)
@@ -249,7 +247,7 @@ struct CalendarWidget:View {
             if let first {
                 if g.size.height/t < 115 {
                     HStack(spacing:10) {
-                        Text(first.isAllDay ? "All day" : first.startDate.formatted(date:.omitted,time:.shortened)).font(retroFont(min(22*t,g.size.height-24),bold:false)).fixedSize()
+                        Text(first.compactDateLabel()).font(retroFont(min(22*t,g.size.height-24),bold:false)).fixedSize()
                         Text(first.title).font(retroFont(min(27*t,g.size.height-24))).lineLimit(1)
                     }.padding(8).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
                 } else {
