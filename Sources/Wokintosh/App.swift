@@ -13,7 +13,7 @@ import SwiftUI
 }
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let store=DashboardStore()
-    var dashboard: NSWindow?
+    var dashboard: DashboardWindow?
     var editor: NSWindow?
     private var screenObserver:NSObjectProtocol?
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -58,6 +58,7 @@ import SwiftUI
     func suspendPresentation(remember:Bool) {
         if !remember { store.document.presentationEnabled=false }
         guard let window=dashboard else{return}
+        window.presentationEscapeHandler=nil
         window.styleMask=[.titled,.closable,.miniaturizable,.resizable]
         window.collectionBehavior=[]
         window.setContentSize(NSSize(width:1280,height:720));window.center()
@@ -84,6 +85,7 @@ import SwiftUI
         guard let screen else{return}
         store.document.presentationEnabled=true
         store.document.displayID=screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32
+        window.presentationEscapeHandler = { [weak self] in self?.leavePresentation() }
         window.styleMask=[.borderless,.resizable]
         window.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
         window.setFrame(screen.frame,display:true)
