@@ -1,0 +1,20 @@
+# Build products and scratch
+.build/
+dist/
+work/
+.DS_Store
+__pycache__/
+*.pyc
+# Local-only development documentation
+AGENTS.md
+HANDOFF.md
+CLAUDE.md
+GEMINI.md
+docs/DEVELOPMENT.md
+docs/superpowers/
+.superpowers/
+
+# Agent-specific local tooling
+.codex/
+.agents/
+.claude/
