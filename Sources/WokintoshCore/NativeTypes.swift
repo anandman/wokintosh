@@ -17,10 +17,34 @@ public struct WeatherInfo: Equatable, Sendable {
         self.temperature = temperature; self.condition = condition; self.symbol = symbol; self.status = status; self.place = place; self.updatedAt = updatedAt
     }
 }
+public struct CalendarDescriptor: Identifiable, Equatable, Sendable {
+    public var id: String; public var title: String; public var sourceTitle: String
+    public init(id: String, title: String, sourceTitle: String) {
+        self.id = id; self.title = title; self.sourceTitle = sourceTitle
+    }
+}
+public struct CalendarSelectionOptions: Codable, Equatable, Sendable {
+    /// nil selects every calendar; an empty array selects none.
+    public var calendarIDs: [String]?
+    public var includeAllDay: Bool
+    public var nextEventOnly: Bool
+    public init(calendarIDs: [String]? = nil, includeAllDay: Bool = true, nextEventOnly: Bool = true) {
+        self.calendarIDs = calendarIDs; self.includeAllDay = includeAllDay; self.nextEventOnly = nextEventOnly
+    }
+    private enum CodingKeys: String, CodingKey { case calendarIDs, includeAllDay, nextEventOnly }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        calendarIDs = try values.decodeIfPresent([String].self, forKey: .calendarIDs)
+        includeAllDay = try values.decodeIfPresent(Bool.self, forKey: .includeAllDay) ?? true
+        nextEventOnly = try values.decodeIfPresent(Bool.self, forKey: .nextEventOnly) ?? true
+    }
+}
 public struct CalendarEntry: Identifiable, Equatable, Sendable {
     public var id: String; public var title: String; public var startDate: Date; public var endDate: Date; public var isAllDay: Bool
-    public init(id: String, title: String, startDate: Date, endDate: Date, isAllDay: Bool) {
+    public var calendarID: String; public var calendarTitle: String
+    public init(id: String, title: String, startDate: Date, endDate: Date, isAllDay: Bool, calendarID: String = "", calendarTitle: String = "") {
         self.id = id; self.title = title; self.startDate = startDate; self.endDate = endDate; self.isAllDay = isAllDay
+        self.calendarID = calendarID; self.calendarTitle = calendarTitle
     }
 }
 public extension CalendarEntry {
@@ -42,8 +66,23 @@ public extension CalendarEntry {
 }
 public struct CalendarInfo: Equatable, Sendable {
     public var events: [CalendarEntry]; public var status: String; public var authorized: Bool
-    public init(events: [CalendarEntry] = [], status: String = "Enable Calendar to show upcoming events", authorized: Bool = false) {
-        self.events = events; self.status = status; self.authorized = authorized
+    public var calendars: [CalendarDescriptor]
+    public init(events: [CalendarEntry] = [], status: String = "Enable Calendar to show upcoming events", authorized: Bool = false, calendars: [CalendarDescriptor] = []) {
+        self.events = events; self.status = status; self.authorized = authorized; self.calendars = calendars
+    }
+    public func events(for options: CalendarSelectionOptions, at now: Date = Date()) -> [CalendarEntry] {
+        let selectedIDs = options.calendarIDs.map(Set.init)
+        return Array(events.filter { event in
+            event.startDate.timeIntervalSinceReferenceDate.isFinite &&
+            event.endDate.timeIntervalSinceReferenceDate.isFinite &&
+            event.endDate > event.startDate && event.endDate > now &&
+            (selectedIDs?.contains(event.calendarID) ?? true) &&
+            (options.includeAllDay || !event.isAllDay)
+        }.sorted { first, second in
+            if first.startDate != second.startDate { return first.startDate < second.startDate }
+            if first.title != second.title { return first.title < second.title }
+            return first.id < second.id
+        }.prefix(options.nextEventOnly ? 1 : 12))
     }
 }
 public struct PlaceResult: Identifiable, Equatable, Sendable {
