@@ -13,8 +13,9 @@ public struct AgentSession: Codable, Equatable, Sendable {
 public struct HostInfo: Codable, Equatable, Sendable { public var id: String; public var name: String; public var platform: String }
 public struct SystemReading: Codable, Equatable, Sendable {
     public var cpuPercent: Double?; public var memoryUsedBytes: UInt64?; public var memoryTotalBytes: UInt64?; public var diskFreeBytes: UInt64?; public var diskTotalBytes: UInt64?
-    public init(cpuPercent: Double? = nil, memoryUsedBytes: UInt64? = nil, memoryTotalBytes: UInt64? = nil, diskFreeBytes: UInt64? = nil, diskTotalBytes: UInt64? = nil) {
-        self.cpuPercent=cpuPercent; self.memoryUsedBytes=memoryUsedBytes; self.memoryTotalBytes=memoryTotalBytes; self.diskFreeBytes=diskFreeBytes; self.diskTotalBytes=diskTotalBytes
+    public var drives: [DriveReading]?
+    public init(cpuPercent: Double? = nil, memoryUsedBytes: UInt64? = nil, memoryTotalBytes: UInt64? = nil, diskFreeBytes: UInt64? = nil, diskTotalBytes: UInt64? = nil, drives: [DriveReading]? = nil) {
+        self.cpuPercent=cpuPercent; self.memoryUsedBytes=memoryUsedBytes; self.memoryTotalBytes=memoryTotalBytes; self.diskFreeBytes=diskFreeBytes; self.diskTotalBytes=diskTotalBytes; self.drives=drives
     }
 }
 public struct Snapshot: Codable, Equatable, Sendable {
@@ -38,11 +39,12 @@ public struct Snapshot: Codable, Equatable, Sendable {
     }
 }
 public struct SessionRow: Identifiable, Equatable, Sendable {
-    public var hostID: String; public var hostName: String; public var session: AgentSession; public var connected: Bool
+    public var hostID: String; public var hostName: String; public var session: AgentSession; public var connected: Bool; public var completionPending: Bool
     public var id: String { [hostID, session.provider, session.id].map { "\($0.utf8.count):\($0)" }.joined() }
-    public init(hostID: String, hostName: String, session: AgentSession, connected: Bool = true) { self.hostID=hostID; self.hostName=hostName; self.session=session; self.connected=connected }
+    public init(hostID: String, hostName: String, session: AgentSession, connected: Bool = true, completionPending: Bool = false) { self.hostID=hostID; self.hostName=hostName; self.session=session; self.connected=connected; self.completionPending=completionPending }
 }
 public struct AgentPresentation {
+    public var doneCount: Int = 0
     public var visible: [SessionRow]; public var hiddenCount: Int; public var attentionCount: Int; public var workingCount: Int
     public var hiddenAttentionCount: Int {
         attentionCount-visible.filter { $0.connected && $0.session.state == .needsAttention }.count
@@ -52,18 +54,24 @@ public struct AgentPresentation {
         return hiddenCount > 0 ? "+\(hiddenCount) more \(hiddenCount == 1 ? "session" : "sessions")" : nil
     }
     public static func make(rows: [SessionRow], capacity: Int, showFinished: Bool = false) -> AgentPresentation {
-        let filtered = rows.filter { showFinished || ($0.session.state != .finished && $0.session.state != .idle) }
+        let filtered = rows.filter { showFinished || $0.completionPending || ($0.session.state != .finished && $0.session.state != .idle) }
         let sorted = filtered.sorted {
-            let first = $0.connected ? $0.session.state.priority : AgentState.unknown.priority
-            let second = $1.connected ? $1.session.state.priority : AgentState.unknown.priority
+            let first = priority($0)
+            let second = priority($1)
             if first != second { return first < second }
             if $0.session.updatedAt != $1.session.updatedAt { return $0.session.updatedAt > $1.session.updatedAt }
             return $0.id < $1.id
         }
         let visible = Array(sorted.prefix(max(0, capacity)))
-        return AgentPresentation(visible: visible, hiddenCount: sorted.count-visible.count,
+        return AgentPresentation(doneCount: filtered.filter(\.completionPending).count, visible: visible, hiddenCount: sorted.count-visible.count,
                                  attentionCount: filtered.filter { $0.connected && $0.session.state == .needsAttention }.count,
                                  workingCount: filtered.filter { $0.connected && $0.session.state == .working }.count)
+    }
+    private static func priority(_ row: SessionRow) -> Int {
+        if row.connected && row.session.state == .needsAttention { return 0 }
+        if row.completionPending { return 1 }
+        if row.connected && row.session.state == .working { return 2 }
+        return 3+(row.connected ? row.session.state.priority : AgentState.unknown.priority)
     }
 }
 

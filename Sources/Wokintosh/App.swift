@@ -15,6 +15,11 @@ import SwiftUI
     let store=DashboardStore()
     var dashboard: DashboardWindow?
     var editor: NSWindow?
+    private var transitioning=false
+    private var resumeAfterExit=false
+    private var pendingDisplayID:UInt32?
+    private var exitRequested=false
+    private var preservePreference=false
     private var screenObserver:NSObjectProtocol?
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenu()
@@ -23,7 +28,7 @@ import SwiftUI
         let window=DashboardWindow(contentRect: NSRect(x:0,y:0,width:1280,height:720), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
         window.title="Wokintosh"
         window.identifier=NSUserInterfaceItemIdentifier("wokintosh-dashboard")
-        window.contentView=NSHostingView(rootView: DashboardCanvas(store: store, editing: false))
+        window.contentView=NSHostingView(rootView: DashboardCanvas(store: store, editing: false).ignoresSafeArea())
         window.contentAspectRatio=NSSize(width:16,height:9)
         window.minSize=NSSize(width:640,height:360)
         window.isReleasedWhenClosed=false
@@ -57,6 +62,14 @@ import SwiftUI
     @objc func leavePresentation() { suspendPresentation(remember:false) }
     func suspendPresentation(remember:Bool) {
         if !remember { store.document.presentationEnabled=false }
+        preservePreference=remember;resumeAfterExit=false
+        guard let window=dashboard else{return}
+        window.presentationEscapeHandler=nil
+        if transitioning { exitRequested=true;return }
+        if window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
+        else { restoreWindowChrome() }
+    }
+    private func restoreWindowChrome() {
         guard let window=dashboard else{return}
         window.presentationEscapeHandler=nil
         window.styleMask=[.titled,.closable,.miniaturizable,.resizable]
@@ -79,17 +92,58 @@ import SwiftUI
         window.isReleasedWhenClosed=false
         window.makeKeyAndOrderFront(nil);editor=window
     }
-    func present(on id: UInt32?) {
+    func present(on id:UInt32?) {
         guard let window=dashboard else{return}
-        let screen=NSScreen.screens.first{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32)==id} ?? NSScreen.main
+        let screen=NSScreen.screens.first{screenID($0)==id} ?? NSScreen.main
         guard let screen else{return}
+        if transitioning {pendingDisplayID=screenID(screen);resumeAfterExit=true;return}
+        if window.styleMask.contains(.fullScreen) {
+            if store.document.nativeFullscreen && screenID(window.screen)==screenID(screen) {window.makeKeyAndOrderFront(nil);return}
+            pendingDisplayID=screenID(screen);resumeAfterExit=true;preservePreference=true
+            window.toggleFullScreen(nil);return
+        }
         store.document.presentationEnabled=true
-        store.document.displayID=screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32
-        window.presentationEscapeHandler = { [weak self] in self?.leavePresentation() }
-        window.styleMask=[.borderless,.resizable]
-        window.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
-        window.setFrame(screen.frame,display:true)
-        window.makeKeyAndOrderFront(nil)
+        store.document.displayID=screenID(screen)
+        preservePreference=false;exitRequested=false
+        window.presentationEscapeHandler={ [weak self] in self?.leavePresentation() }
+        if store.document.nativeFullscreen {
+            window.styleMask=[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView]
+            window.collectionBehavior=[.fullScreenPrimary]
+            window.setFrame(screen.frame,display:true)
+            window.makeKeyAndOrderFront(nil)
+            transitioning=true
+            window.toggleFullScreen(nil)
+        } else {
+            window.styleMask=[.borderless,.resizable]
+            window.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
+            window.setFrame(screen.frame,display:true);window.makeKeyAndOrderFront(nil)
+        }
+    }
+    private func screenID(_ screen:NSScreen?) -> UInt32? { (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
+    func window(_ window:NSWindow,willUseFullScreenPresentationOptions proposed:NSApplication.PresentationOptions)->NSApplication.PresentationOptions {
+        guard window === dashboard else{return proposed}
+        return proposed.subtracting([.autoHideMenuBar,.autoHideDock,.autoHideToolbar]).union([.fullScreen,.hideMenuBar,.hideDock])
+    }
+    func windowWillEnterFullScreen(_ notification:Notification) {if notification.object as? NSWindow === dashboard {transitioning=true}}
+    func windowDidEnterFullScreen(_ notification:Notification) {
+        guard notification.object as? NSWindow === dashboard else{return}
+        transitioning=false
+        if exitRequested {exitRequested=false;suspendPresentation(remember:preservePreference);return}
+        store.document.presentationEnabled=true
+        if resumeAfterExit {resumeAfterExit=false;present(on:pendingDisplayID)}
+    }
+    func windowWillExitFullScreen(_ notification:Notification) {if notification.object as? NSWindow === dashboard {transitioning=true}}
+    func windowDidExitFullScreen(_ notification:Notification) {
+        guard notification.object as? NSWindow === dashboard else{return}
+        transitioning=false;exitRequested=false
+        restoreWindowChrome()
+        if resumeAfterExit {resumeAfterExit=false;present(on:pendingDisplayID)}
+        else {if !preservePreference {store.document.presentationEnabled=false};preservePreference=false}
+    }
+    func windowDidFailToEnterFullScreen(_ window:NSWindow) {
+        guard window === dashboard else{return}
+        transitioning=false;resumeAfterExit=false;exitRequested=false;store.document.presentationEnabled=false
+        restoreWindowChrome();store.notice="macOS could not enter fullscreen. Try Present again or choose borderless mode.";openEditor()
     }
     func restorePresentationIfPossible() {
         guard store.document.presentationEnabled else{return}

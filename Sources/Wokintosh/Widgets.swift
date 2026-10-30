@@ -12,7 +12,7 @@ struct WidgetContent: View {
             case .system: SystemWidget(store:store,widget:widget)
             case .clock: ClockWidget(textScale:store.document.textScale)
             case .weather: WeatherWidget(store:store)
-            case .calendar: CalendarWidget(store:store)
+            case .calendar: CalendarWidget(store:store,widget:widget)
             }
         }.clipped()
     }
@@ -31,8 +31,8 @@ struct AgentWidget: View {
             let capacity=max(0,Int((geometry.size.height-header-30)/rowHeight))
             let page=AgentPresentation.make(rows:store.rows(for:widget),capacity:capacity,showFinished:widget.showFinished)
             VStack(alignment:.leading,spacing:0) {
-                Text(narrow ? "\(page.attentionCount) \(page.attentionCount == 1 ? "needs" : "need") you · \(page.workingCount) working" : "\(page.workingCount) working · \(page.attentionCount) \(page.attentionCount == 1 ? "needs" : "need") you")
-                    .font(retroFont((narrow ? 25 : 34)*t)).lineLimit(1).frame(height:header,alignment:.leading)
+                Text("\(page.attentionCount) need you · \(page.doneCount) done · \(page.workingCount) working")
+                    .font(retroFont((narrow ? 21 : 30)*t)).lineLimit(1).frame(height:header,alignment:.leading)
                 if page.visible.isEmpty && capacity > 0 {
                     VStack(alignment:.leading,spacing:9) {
                         Text("No active sessions").font(retroFont(30*t))
@@ -41,6 +41,7 @@ struct AgentWidget: View {
                 } else {
                     ForEach(page.visible) { row in
                         agentRow(row,wide:wide,narrow:narrow,t:t).frame(height:rowHeight)
+                            .background(row.completionPending ? Color.retroPurple.opacity(0.13) : .clear)
                             .overlay(alignment:.top) { Rectangle().fill(.black.opacity(0.35)).frame(height:0.8) }
                     }
                     Spacer(minLength:0)
@@ -79,8 +80,13 @@ struct AgentWidget: View {
         HStack(spacing:8) {
             StatusDot(state:row.session.state,connected:row.connected).frame(width:16*t,height:16*t)
             Text(row.connected ? row.session.state.label : "Offline").font(retroFont(font*t)).foregroundStyle(StatusDot(state:row.session.state,connected:row.connected).tint)
+            if row.completionPending {
+                Button { store.reviewCompletion(row) } label:{Image(systemName:"checkmark.circle").font(.system(size:21*t))}
+                    .buttonStyle(.plain).foregroundStyle(Color.retroPurple).accessibilityLabel("Mark \(row.session.title) done as reviewed").help("Mark done as reviewed")
+            }
         }.lineLimit(1)
     }
+
 }
 
 struct MusicWidget: View {
@@ -107,7 +113,7 @@ struct MusicWidget: View {
                 VStack(alignment:.leading,spacing:12) {
                     Text("Now Playing").font(retroFont(30*t))
                     Text(music.status).font(retroFont(22*t,bold:false))
-                    if !store.native.musicEnabled { Button("Connect Apple Music") { Task { await store.native.connectMusic() } }.buttonStyle(.bordered) }
+                    if !store.native.musicEnabled { Button("Source settings…") { store.openSettings(.personal) }.buttonStyle(.bordered) }
                 }.padding(15).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
             }
         }
@@ -155,39 +161,53 @@ struct SystemWidget: View {
         GeometryReader { g in
             let (_,value,connected)=store.system(for:widget)
             let t=store.document.textScale
-            let compact=g.size.height/t < 95
             let items=readings(value)
-            Group {
+            let columns=max(1,min(items.count,Int(g.size.width/(215*t))))
+            let compact=g.size.height/t<95
+            let rows=max(1,Int((g.size.height-20)/(compact ? 50*t : 84*t)))
+            let capacity=rows*columns
+            VStack(alignment:.leading,spacing:4) {
+                if items.isEmpty {Text("Choose readings in the widget inspector.").font(retroFont(22*t,bold:false))}
                 if compact {
-                    let count=g.size.width < 340 ? 1 : (g.size.width < 650 ? 2 : 3)
-                    HStack(spacing:16) {
-                        ForEach(Array(items.prefix(count).enumerated()),id:\.offset) { _,item in
-                            HStack(spacing:5) {
-                                Text(item.0).font(retroFont(min(18*t,max(18,(g.size.height-24)*0.55))))
-                                Text(item.1).font(retroFont(min(28*t,max(24,(g.size.height-20)*0.7))))
-                            }.lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-                        }
+                    HStack(spacing:10) {
+                        ForEach(Array(items.prefix(columns).enumerated()),id:\.offset) {_,item in metric(item,t:t,compact:true,showBar:false)}
+                        if items.count>columns {Text("+\(items.count-columns)").font(retroFont(16*t)).fixedSize()}
                     }
-                } else if g.size.width < 400 {
-                    let count=max(1,min(3,Int((g.size.height-16)/(64*t))))
-                    VStack(alignment:.leading,spacing:8) { ForEach(Array(items.prefix(count).enumerated()),id:\.offset) { _,item in metric(item,t:t,showBar:false) } }
                 } else {
-                    HStack(spacing:22) {ForEach(Array(items.enumerated()),id:\.offset) { _,item in metric(item,t:t,showBar:g.size.height/t > 100) }}
+                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(),alignment:.leading),count:columns),alignment:.leading,spacing:8) {
+                        ForEach(Array(items.prefix(capacity).enumerated()),id:\.offset) {_,item in metric(item,t:t,compact:false,showBar:g.size.height/t>105)}
+                    }
+                    if items.count>capacity {Text("+\(items.count-capacity) more readings · resize to show").font(retroFont(17*t,bold:false)).lineLimit(1)}
                 }
             }.padding(8).opacity(connected ? 1 : 0.45).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
-            if !connected { Text("Source unavailable").font(retroFont(18)).foregroundStyle(.orange).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.bottomTrailing).padding(5) }
+            if !connected {Text("Source unavailable").font(retroFont(18)).foregroundStyle(.orange).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.bottomTrailing).padding(5)}
         }
     }
-    func readings(_ v:SystemReading)->[(String,String,Double?)] {[("CPU",v.cpuPercent.map{String(format:"%.0f%%",$0)} ?? "—",v.cpuPercent.map{$0/100}),("RAM",bytes(v.memoryUsedBytes),memoryFraction(v)),("SSD",bytes(v.diskFreeBytes),nil)]}
-    func metric(_ item:(String,String,Double?),t:Double,showBar:Bool)->some View {
-        VStack(alignment:.leading,spacing:3) {
-            Text(item.0 == "SSD" ? "SSD free" : item.0).font(retroFont(19*t))
-            Text(item.1).font(retroFont(34*t)).lineLimit(1)
-            if showBar,let fraction=item.2 {RetroProgress(fraction:fraction,tint:item.0 == "CPU" ? .retroPurple : .green).frame(height:11)}
-        }.frame(maxWidth:.infinity,alignment:.leading)
+    func readings(_ value:SystemReading)->[(String,String,Double?)] {
+        var result:[(String,String,Double?)]=[]
+        if widget.systemOptions.showCPU {result.append(("CPU",value.cpuPercent.map{String(format:"%.0f%%",$0)} ?? "—",value.cpuPercent.map{$0/100}))}
+        if widget.systemOptions.showMemory {result.append(("RAM",bytes(value.memoryUsedBytes),memoryFraction(value)))}
+        if widget.systemOptions.showStorage {
+            result += store.selectedDrives(for:widget).map {drive in (drive.name.isEmpty ? drive.mountPoint : drive.name,bytes(drive.freeBytes)+" free",nil)}
+        }
+        return result
+    }
+    @ViewBuilder func metric(_ item:(String,String,Double?),t:Double,compact:Bool,showBar:Bool)->some View {
+        if compact {
+            HStack(spacing:5) {
+                Text(item.0).font(retroFont(16*t)).lineLimit(1)
+                Text(item.1).font(retroFont(24*t)).lineLimit(1)
+            }.frame(maxWidth:.infinity,alignment:.leading)
+        } else {
+            VStack(alignment:.leading,spacing:3) {
+                Text(item.0).font(retroFont(19*t)).lineLimit(1)
+                Text(item.1).font(retroFont(30*t)).lineLimit(1)
+                if showBar,let fraction=item.2 {RetroProgress(fraction:fraction,tint:item.0 == "CPU" ? .retroPurple : .green).frame(height:10)}
+            }.frame(maxWidth:.infinity,alignment:.leading)
+        }
     }
     func bytes(_ value:UInt64?)->String {value.map{ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.memory)} ?? "—"}
-    func memoryFraction(_ v:SystemReading)->Double? {guard let total=v.memoryTotalBytes,total>0,let used=v.memoryUsedBytes else{return nil};return Double(used)/Double(total)}
+    func memoryFraction(_ value:SystemReading)->Double? {guard let total=value.memoryTotalBytes,total>0,let used=value.memoryUsedBytes else{return nil};return Double(used)/Double(total)}
 }
 struct ClockWidget:View {
     var textScale:Double
@@ -232,7 +252,7 @@ struct WeatherWidget:View {
                 VStack(alignment:.leading,spacing:5) {
                     if g.size.height>100 {Text("Weather").font(retroFont(27*t))}
                     Text(info.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>110 ? 2 : 1)
-                    if g.size.height>90 {Button("Choose Location…"){store.showEditor?()}.buttonStyle(.bordered)}
+                    if g.size.height>90 {Button("Source settings…"){store.openSettings(.weather)}.buttonStyle(.bordered).accessibilityLabel("Weather source settings")}
                 }.padding(9).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
             }
         }
@@ -240,10 +260,12 @@ struct WeatherWidget:View {
 }
 struct CalendarWidget:View {
     @ObservedObject var store:DashboardStore
+    let widget:DashboardWidget
     var body:some View {
         GeometryReader { g in
             let t=store.document.textScale
-            let first=store.document.previewMode ? CalendarEntry(id:"preview",title:"Planning",startDate:Calendar.current.date(byAdding:.day,value:1,to:Calendar.current.startOfDay(for:.now))!.addingTimeInterval(9.5*3600),endDate:.now,isAllDay:false) : store.native.calendar.events.first
+            let events=store.calendarEvents(for:widget)
+            let first=events.first
             if let first {
                 if g.size.height/t < 115 {
                     HStack(spacing:10) {
@@ -254,15 +276,15 @@ struct CalendarWidget:View {
                     VStack(alignment:.leading,spacing:10) {
                         calendarRow(first,t:t)
                         if g.size.height/t>250 && !store.document.previewMode {
-                            ForEach(Array(store.native.calendar.events.dropFirst().prefix(2))) {event in Text("\(event.startDate.formatted(date:.abbreviated,time:.shortened)) · \(event.title)").font(retroFont(21*t,bold:false)).lineLimit(1)}
+                            ForEach(Array(events.dropFirst().prefix(2))) {event in Text("\(event.startDate.formatted(date:.abbreviated,time:.shortened)) · \(event.title)").font(retroFont(21*t,bold:false)).lineLimit(1)}
                         }
                     }.padding(8)
                 }
             } else {
                 VStack(alignment:.leading,spacing:7) {
                     if g.size.height>100 {Text(store.native.calendar.authorized ? "No upcoming events" : "Calendar").font(retroFont(27*t))}
-                    Text(store.native.calendar.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>100 ? 2 : 1)
-                    if !store.native.calendar.authorized && g.size.height>85 {Button("Enable Calendar"){Task{await store.native.requestCalendarAccess()}}.buttonStyle(.bordered)}
+                    Text(store.native.calendar.authorized ? "No events match this widget’s selection" : store.native.calendar.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>100 ? 2 : 1)
+                    if !store.native.calendar.authorized && g.size.height>85 {Button("Source settings…"){store.openSettings(.personal)}.buttonStyle(.bordered)}
                 }.padding(9).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
             }
         }

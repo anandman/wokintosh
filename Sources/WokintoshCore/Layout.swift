@@ -25,7 +25,19 @@ public struct WidgetFrame: Codable, Equatable, Sendable {
 public struct Widget: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID; public var kind: WidgetKind; public var frame: WidgetFrame
     public var hostID: String?; public var provider: String?; public var showFinished: Bool; public var showHelpers: Bool
+    public var systemOptions=SystemWidgetOptions()
+    public var calendarOptions=CalendarSelectionOptions()
     public init(kind: WidgetKind, frame: WidgetFrame) { self.id=UUID(); self.kind=kind; self.frame=frame; self.showFinished=false; self.showHelpers=false }
+
+    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions }
+    public init(from decoder: Decoder) throws {
+        let c=try decoder.container(keyedBy:CodingKeys.self)
+        id=try c.decode(UUID.self,forKey:.id);kind=try c.decode(WidgetKind.self,forKey:.kind);frame=try c.decode(WidgetFrame.self,forKey:.frame)
+        hostID=try c.decodeIfPresent(String.self,forKey:.hostID);provider=try c.decodeIfPresent(String.self,forKey:.provider)
+        showFinished=try c.decodeIfPresent(Bool.self,forKey:.showFinished) ?? false;showHelpers=try c.decodeIfPresent(Bool.self,forKey:.showHelpers) ?? false
+        systemOptions=try c.decodeIfPresent(SystemWidgetOptions.self,forKey:.systemOptions) ?? SystemWidgetOptions()
+        calendarOptions=try c.decodeIfPresent(CalendarSelectionOptions.self,forKey:.calendarOptions) ?? CalendarSelectionOptions()
+    }
 }
 public struct RemoteHost: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID; public var name: String; public var destination: String; public var collectorPath: String; public var enabled: Bool
@@ -35,12 +47,18 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
     public var version: Int = 1; public var widgets: [Widget]; public var textScale: Double = 1
     public var remoteHosts: [RemoteHost] = []; public var weatherPlace: String = ""; public var latitude: Double?; public var longitude: Double?; public var fahrenheit: Bool = false
     public var displayID: UInt32?; public var presentationEnabled: Bool = false; public var previewMode: Bool = false; public var previewWidthMM: Double = 111
+    public var snapToGrid=true
+    public var nativeFullscreen=true
+    public var completions=CompletionTracker()
     public init(widgets: [Widget]) { self.widgets=widgets }
-    private enum CodingKeys: String, CodingKey { case version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
+    private enum CodingKeys: String, CodingKey { case snapToGrid,nativeFullscreen,completions,version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
     public init(from decoder: Decoder) throws {
         let values=try decoder.container(keyedBy:CodingKeys.self)
         version=try values.decodeIfPresent(Int.self,forKey:.version) ?? 1
         guard version == 1 else { throw DecodingError.dataCorruptedError(forKey:.version,in:values,debugDescription:"Unsupported layout version") }
+        snapToGrid=try values.decodeIfPresent(Bool.self,forKey:.snapToGrid) ?? true
+        nativeFullscreen=try values.decodeIfPresent(Bool.self,forKey:.nativeFullscreen) ?? true
+        completions=try values.decodeIfPresent(CompletionTracker.self,forKey:.completions) ?? CompletionTracker()
         widgets=try values.decode([Widget].self,forKey:.widgets)
         textScale=try values.decodeIfPresent(Double.self,forKey:.textScale) ?? 1
         remoteHosts=try values.decodeIfPresent([RemoteHost].self,forKey:.remoteHosts) ?? []
