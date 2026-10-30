@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import shutil
 import socket
@@ -341,9 +342,52 @@ def command_output(args):
         return ''
 
 
+def disk_metrics(path):
+    try:
+        usage = shutil.disk_usage(path)
+        return {'freeBytes': usage.free, 'totalBytes': usage.total}
+    except OSError:
+        return {'freeBytes': None, 'totalBytes': None}
+
+
+def mounted_drives():
+    """Root plus at most 64 user volumes; measure space instead of trusting df counts."""
+    mounts = set()
+    system = platform.system()
+    for line in command_output(['df', '-P', '-k']).splitlines():
+        fields = line.split(maxsplit=5)
+        if len(fields) != 6 or not fields[1].isdigit():
+            continue
+        source, mount = fields[0], fields[5]
+        mount = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), mount)
+        if not mount.startswith('/') or mount == '/':
+            continue
+        if system == 'Darwin':
+            if not mount.startswith('/Volumes/'):
+                continue
+        elif system == 'Linux':
+            # Real devices and network shares only. Container /etc file binds and
+            # pseudo/system mounts are not useful disk selections.
+            excluded = ('/dev', '/proc', '/sys', '/etc', '/boot', '/snap',
+                        '/var/lib/docker', '/var/lib/containerd')
+            if any(mount == prefix or mount.startswith(prefix + '/') for prefix in excluded):
+                continue
+            if (mount == '/run' or mount.startswith('/run/')) and not mount.startswith('/run/media/'):
+                continue
+            if not (source.startswith('/dev/') or ':' in source or source.startswith('//')):
+                continue
+        else:
+            continue
+        mounts.add(mount)
+    return [{'id': mount, 'name': 'System' if mount == '/' else Path(mount).name,
+             'mountPoint': mount, **disk_metrics(mount)}
+            for mount in ['/'] + sorted(mounts)[:64]]
+
+
 def system_stats(home, state_dir):
-    usage = shutil.disk_usage(home)
-    result = {'diskFreeBytes': usage.free, 'diskTotalBytes': usage.total}
+    usage = disk_metrics(home)
+    result = {'diskFreeBytes': usage['freeBytes'], 'diskTotalBytes': usage['totalBytes'],
+              'drives': mounted_drives()}
     if platform.system() == 'Linux':
         try:
             mem = {}
@@ -549,6 +593,17 @@ def make_snapshot(home, state_dir, now, host_name=None):
 def hook_install_config(provider, command, existing):
     result = copy.deepcopy(existing)
     hooks = result.setdefault('hooks', {})
+    if provider == 'codex':
+        result.setdefault('description', 'Wokintosh status observer hooks')
+    observer_command = command + ' # Wokintosh status observer; ' + MARKER
+    status_message = 'Wokintosh status observer'
+    # Re-enabling also migrates existing marked commands (including older event
+    # groups), without replacing matchers or unrelated handler settings.
+    for entries in hooks.values():
+        for entry in entries:
+            for handler in entry.get('hooks', []):
+                if handler.get('type') == 'command' and MARKER in str(handler.get('command', '')):
+                    handler.update(command=observer_command, statusMessage=status_message)
     names = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop']
     if provider == 'claude':
         names += ['Notification', 'SessionEnd', 'StopFailure', 'PostToolUseFailure']
@@ -557,7 +612,8 @@ def hook_install_config(provider, command, existing):
     for name in names:
         entries = hooks.setdefault(name, [])
         if not any(MARKER in str(h.get('command', '')) for e in entries for h in e.get('hooks', [])):
-            entries.append({'hooks': [{'type': 'command', 'command': command+' # '+MARKER, 'timeout': 3}]})
+            entries.append({'hooks': [{'type': 'command', 'command': observer_command,
+                                      'statusMessage': status_message, 'timeout': 3}]})
     return result
 
 
