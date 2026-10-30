@@ -51,6 +51,57 @@ final class UsabilityTests: XCTestCase {
         tracker.ingest([row(.working,at:now.addingTimeInterval(1))],at:now)
         XCTAssertTrue(tracker.pending.isEmpty)
     }
+    func testNewerConnectedUnknownOrIdleSupersedesPersistedCompletion() throws {
+        let now=Date(timeIntervalSince1970:1000000)
+        for state in [AgentState.unknown,.idle] {
+            var tracker=CompletionTracker()
+            let done=row(.finished,at:now)
+            let other=row(.finished,at:now,id:"other")
+            tracker.ingest([done,other],at:now)
+            tracker=try JSONDecoder().decode(CompletionTracker.self,from:JSONEncoder().encode(tracker))
+            tracker.ingest([row(state,at:now.addingTimeInterval(1))],at:now.addingTimeInterval(1))
+            XCTAssertEqual(tracker.pending.map(\.id),[other.id],"Newer \(state) must supersede only its own completion")
+        }
+    }
+    func testEqualOrOlderConnectedActivityPreservesPendingCompletion() {
+        let now=Date(timeIntervalSince1970:1000000)
+        let done=row(.finished,at:now)
+        for state in [AgentState.working,.needsAttention,.unknown,.idle] {
+            for offset in [-1.0,0.0] {
+                var tracker=CompletionTracker()
+                tracker.ingest([done],at:now)
+                tracker.ingest([row(state,at:now.addingTimeInterval(offset))],at:now)
+                XCTAssertEqual(tracker.pending,[CompletionRecord(done)],"\(state) at offset \(offset) is not newer activity")
+            }
+        }
+    }
+    func testDisconnectedActivityPreservesPendingCompletion() {
+        let now=Date(timeIntervalSince1970:1000000)
+        let done=row(.finished,at:now)
+        for state in [AgentState.working,.needsAttention,.unknown,.idle] {
+            var tracker=CompletionTracker()
+            tracker.ingest([done],at:now)
+            var offline=row(state,at:now.addingTimeInterval(1))
+            offline.connected=false
+            tracker.ingest([offline],at:now.addingTimeInterval(1))
+            XCTAssertEqual(tracker.pending,[CompletionRecord(done)],"Disconnected \(state) cannot supersede a completion")
+        }
+    }
+    func testSupersededCompletionCannotReplayAfterReloadButNewCompletionAppears() throws {
+        let now=Date(timeIntervalSince1970:1000000)
+        for state in [AgentState.unknown,.idle] {
+            var tracker=CompletionTracker()
+            let oldDone=row(.finished,at:now)
+            tracker.ingest([oldDone],at:now)
+            tracker.ingest([row(state,at:now.addingTimeInterval(1))],at:now.addingTimeInterval(1))
+            tracker=try JSONDecoder().decode(CompletionTracker.self,from:JSONEncoder().encode(tracker))
+            tracker.ingest([oldDone],at:now.addingTimeInterval(2))
+            XCTAssertTrue(tracker.pending.isEmpty,"Superseded Done must not return from stale finished evidence after \(state)")
+            let newDone=row(.finished,at:now.addingTimeInterval(3))
+            tracker.ingest([newDone,newDone],at:now.addingTimeInterval(3))
+            XCTAssertEqual(tracker.pending,[CompletionRecord(newDone)])
+        }
+    }
     func testUnreviewedCompletionVisibleWithoutFinishedHistoryToggle() {
         var done=row(.finished,at:Date());done.completionPending=true
         let needs=row(.needsAttention,at:Date(),id:"attention")

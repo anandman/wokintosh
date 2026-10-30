@@ -18,9 +18,14 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
         reviewed=reviewed.filter { now.timeIntervalSince($0.value)<7*86400 }
         active=active.filter { now.timeIntervalSince($0.value)<7*86400 }
         for row in rows where row.connected {
+            if row.session.state != .finished,
+               let completion=pending.first(where:{ $0.id == row.id }),
+               completion.session.updatedAt < row.session.updatedAt {
+                // Retire the old finished evidence too, so stale snapshots cannot revive it.
+                review(row.id)
+            }
             if row.session.state == .working || row.session.state == .needsAttention {
                 active[row.id]=row.session.updatedAt
-                pending.removeAll { $0.id == row.id && $0.session.updatedAt < row.session.updatedAt }
             } else if row.session.state == .finished {
                 let recent=now.timeIntervalSince(row.session.updatedAt)<86400
                 guard recent || active[row.id] != nil else { continue }
