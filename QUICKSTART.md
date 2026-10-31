@@ -1,5 +1,7 @@
 # Wokintosh quick start
 
+Tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps) with its 5-inch 1280 × 720 display.
+
 Requires an Apple silicon Mac with macOS 14 or later. Agent machines may run macOS or Linux with Python 3.10 or later and SSH.
 
 1. Drag **Wokintosh.app** to **Applications**. Quit any older running copy, then open the installed app. Upgrading preserves your dashboard and connected machines.
