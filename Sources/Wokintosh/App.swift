@@ -5,6 +5,7 @@ import SwiftUI
 @main struct WokintoshMain {
     @MainActor static func main() {
         let application=NSApplication.shared
+        guard AppInstanceGuard.canLaunch() else {return}
         let delegate=AppDelegate()
         application.delegate=delegate
         application.setActivationPolicy(delegate.store.document.showDockIcon ? .regular : .accessory)
@@ -25,6 +26,8 @@ import SwiftUI
     private var preservePreference=false
     private var screenObserver:NSObjectProtocol?
     private var dockPreferenceSubscription:AnyCancellable?
+    private var lockedDisplayController:LockedDisplayController?
+    private var lockedDisplaySubscription:AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenu()
         observeDockPreference()
@@ -43,10 +46,18 @@ import SwiftUI
         window.center()
         window.makeKeyAndOrderFront(nil)
         dashboard=window
+        configureLockedDisplay(for:window)
         NSApp.activate(ignoringOtherApps:true)
         store.start()
         if ProcessInfo.processInfo.arguments.contains("--editor") { openEditor() } else { restorePresentationIfPossible() }
         screenObserver=NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main) { [weak self] _ in Task { @MainActor in self?.restorePresentationIfPossible() } }
+    }
+    func configureLockedDisplay(for window:NSWindow) {
+        let controller=LockedDisplayController(window:window)
+        lockedDisplayController=controller
+        lockedDisplaySubscription=store.$document.map(\.experimentalLockedDisplay).removeDuplicates().sink { [weak controller] enabled in
+            controller?.setEnabled(enabled)
+        }
     }
     func observeDockPreference() {
         dockPreferenceSubscription = store.$document.map(\.showDockIcon).removeDuplicates().sink { [weak self] visible in
@@ -83,6 +94,7 @@ import SwiftUI
     @objc func presentAction() { present(on:store.document.displayID) }
     @objc func leavePresentation() { suspendPresentation(remember:false) }
     func suspendPresentation(remember:Bool) {
+        lockedDisplayController?.setPresentationActive(false)
         if !remember { store.document.presentationEnabled=false }
         preservePreference=remember;resumeAfterExit=false
         guard let window=dashboard else{return}
@@ -92,6 +104,7 @@ import SwiftUI
         else { restoreWindowChrome() }
     }
     private func restoreWindowChrome() {
+        lockedDisplayController?.setPresentationActive(false)
         guard let window=dashboard else{return}
         window.presentationEscapeHandler=nil
         window.styleMask=[.titled,.closable,.miniaturizable,.resizable]
@@ -150,6 +163,7 @@ import SwiftUI
         store.document.presentationEnabled=true
         store.document.displayID=screenID(screen)
         preservePreference=false;exitRequested=false
+        lockedDisplayController?.setPresentationActive(true)
         window.presentationEscapeHandler={ [weak self] in self?.leavePresentation() }
         if store.document.nativeFullscreen {
             window.styleMask=[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView]
@@ -175,6 +189,7 @@ import SwiftUI
         transitioning=false
         if exitRequested {exitRequested=false;suspendPresentation(remember:preservePreference);return}
         store.document.presentationEnabled=true
+        lockedDisplayController?.setPresentationActive(true)
         if resumeAfterExit {resumeAfterExit=false;present(on:pendingDisplayID)}
     }
     func windowWillExitFullScreen(_ notification:Notification) {if notification.object as? NSWindow === dashboard {transitioning=true}}
@@ -197,5 +212,8 @@ import SwiftUI
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool { false }
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool { dashboard?.makeKeyAndOrderFront(nil);return true }
-    func applicationWillTerminate(_ notification:Notification) { store.saveNow() }
+    func windowWillClose(_ notification:Notification) {
+        if notification.object as? NSWindow === dashboard { lockedDisplayController?.setPresentationActive(false) }
+    }
+    func applicationWillTerminate(_ notification:Notification) { lockedDisplayController?.setPresentationActive(false);store.saveNow() }
 }

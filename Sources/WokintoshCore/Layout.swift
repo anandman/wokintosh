@@ -55,11 +55,12 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
     public var snapToGrid=true
     public var nativeFullscreen=true
     public var showDockIcon=true
+    public var experimentalLockedDisplay=false
     public var completions=CompletionTracker()
     public var blockedSessions=BlockedSessionTracker()
     public var reportedBlockedSessions=ReportedBlockedSessionTracker()
     public init(widgets: [Widget]) { self.widgets=widgets }
-    private enum CodingKeys: String, CodingKey { case layoutGridRevision,snapToGrid,nativeFullscreen,showDockIcon,completions,blockedSessions,reportedBlockedSessions,version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
+    private enum CodingKeys: String, CodingKey { case layoutGridRevision,snapToGrid,nativeFullscreen,showDockIcon,experimentalLockedDisplay,completions,blockedSessions,reportedBlockedSessions,version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
     public init(from decoder: Decoder) throws {
         let values=try decoder.container(keyedBy:CodingKeys.self)
         version=try values.decodeIfPresent(Int.self,forKey:.version) ?? 1
@@ -67,6 +68,7 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
         snapToGrid=try values.decodeIfPresent(Bool.self,forKey:.snapToGrid) ?? true
         nativeFullscreen=try values.decodeIfPresent(Bool.self,forKey:.nativeFullscreen) ?? true
         showDockIcon=try values.decodeIfPresent(Bool.self,forKey:.showDockIcon) ?? true
+        experimentalLockedDisplay=try values.decodeIfPresent(Bool.self,forKey:.experimentalLockedDisplay) ?? false
         completions=try values.decodeIfPresent(CompletionTracker.self,forKey:.completions) ?? CompletionTracker()
         blockedSessions=try values.decodeIfPresent(BlockedSessionTracker.self,forKey:.blockedSessions) ?? BlockedSessionTracker()
         reportedBlockedSessions=try values.decodeIfPresent(ReportedBlockedSessionTracker.self,forKey:.reportedBlockedSessions) ?? ReportedBlockedSessionTracker()

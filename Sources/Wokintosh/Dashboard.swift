@@ -71,7 +71,7 @@ struct PlacedWidget: View {
     @State private var draft: WidgetFrame?
     var body: some View {
         let frame=draft ?? widget.frame
-        RetroWindow(title:widget.kind.title,suffix:suffix,selected:editing && store.selectedID==widget.id,
+        RetroWindow(title:widget.kind.title,suffix:suffix(for:frame),selected:editing && store.selectedID==widget.id,
                     onClose:editing ? { store.remove(widget.id) } : nil,
                     onSelect:editing ? { store.configure(widget.id) } : nil,
                     onMove:editing ? { translation,ended in interact(translation,ended:ended,resizing:false) } : nil) {
@@ -107,8 +107,11 @@ struct PlacedWidget: View {
         if ended { store.change(widget.id) { $0.frame=result };self.start=nil;draft=nil }
         else { draft=result }
     }
-    var suffix:String {
+    private func suffix(for frame:WidgetFrame)->String {
         if widget.kind == .agents { let count=store.rows(for:widget).count;return "\(count) \(count == 1 ? "session" : "sessions")" }
+        if widget.kind == .calendar && !widget.calendarOptions.nextEventOnly {
+            return CalendarWidgetLayout(width:frame.width*canvasSize.width,height:max(0,frame.height*canvasSize.height-29.5),textScale:store.document.textScale,eventCount:store.calendarEvents(for:widget).count,nextEventOnly:false).suffix
+        }
         return widget.kind == .system ? store.system(for:widget).0 : ""
     }
 }

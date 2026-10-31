@@ -18,8 +18,9 @@ struct MusicWidget: View {
                     : min(geometry.size.height-2*padding,geometry.size.width*0.43))
                 let detailWidth=geometry.size.width-2*padding-(stacked ? 0 : artSize+spacing)
                 let showArtist=stacked || geometry.size.height/t>=75
-                let inlineControls=compact && !stacked && detailWidth/t>=260 && showArtist
-                let separateControls = !compact || stacked || (geometry.size.height/t>=108 && detailWidth/t>=150)
+                let controlsBelow=compact && !stacked && geometry.size.height>=12+85*t && detailWidth/t>=100
+                let inlineControls=compact && !stacked && !controlsBelow && detailWidth/t>=260 && showArtist
+                let separateControls = !compact || stacked || controlsBelow || (geometry.size.height/t>=108 && detailWidth/t>=150)
                 let showProgress = !compact || (!stacked && geometry.size.height/t>=155 && detailWidth/t>=180)
                 Group {
                     if stacked {
@@ -51,7 +52,7 @@ struct MusicWidget: View {
     private func details(preview:Bool,compact:Bool,t:Double,showArtist:Bool,inlineControls:Bool,separateControls:Bool,showProgress:Bool)->some View {
         let title=preview ? "Blue Hour" : store.native.music.title
         let artist=preview ? "Paper Satellites" : store.native.music.artist
-        return VStack(alignment:.leading,spacing:compact ? 4 : 8) {
+        return VStack(alignment:.leading,spacing:compact && separateControls && !inlineControls ? 1 : (compact ? 4 : 8)) {
             Text(title).font(retroFont((compact ? 27 : 32)*t)).lineLimit(compact ? 1 : 2).help(title)
             if inlineControls {
                 HStack(spacing:4) {

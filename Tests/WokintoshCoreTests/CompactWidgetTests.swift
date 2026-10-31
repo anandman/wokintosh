@@ -8,6 +8,21 @@ final class CompactWidgetTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(layout.capacity,4)
         XCTAssertTrue(layout.compact)
     }
+    func testApprovedSystemDirectionFitsFourReadableColumnsAtCurrentWidth() {
+        let layout=SystemMetricLayout(width:544,height:82.5,textScale:1,count:4)
+        XCTAssertEqual(layout.columns,4)
+        XCTAssertGreaterThanOrEqual(layout.capacity,4)
+        XCTAssertFalse(layout.compact)
+        XCTAssertGreaterThanOrEqual(layout.rowHeight,64)
+        XCTAssertLessThanOrEqual(layout.padding*2+layout.rowHeight,82.5)
+    }
+    func testWideValuesUseFourReadingFallbackRatherThanTruncatedColumns() {
+        let layout=SystemMetricLayout(width:544,height:82.5,textScale:1,count:4,minimumColumnWidth:140)
+        XCTAssertFalse(layout.columnar)
+        XCTAssertEqual(layout.columns,2)
+        XCTAssertGreaterThanOrEqual(layout.capacity,4)
+        XCTAssertTrue(layout.compact)
+    }
     func testScreenshotSizedAgentWidgetFitsTwelveSessionsAtReadableRowHeight() {
         let layout=AgentWidgetLayout(width:752,height:610.5,textScale:1)
         XCTAssertTrue(layout.singleLine)
@@ -21,7 +36,7 @@ final class CompactWidgetTests: XCTestCase {
         XCTAssertLessThanOrEqual(layout.headerHeight+layout.footerHeight+3,106.9)
     }
     func testSystemReadingsAndOverflowStayWithinAvailableHeight() {
-        for width in [230.4,480.0,880.0] {
+        for width in [230.4,480.0,544.0,880.0] {
             for height in [52.34,82.5,98.5,200.0] {
                 for scale in [0.8,1.0,1.6] {
                     for count in [1,4,6,12] {

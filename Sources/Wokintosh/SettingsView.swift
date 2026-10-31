@@ -63,6 +63,18 @@ private struct DisplaySettingsView: View {
                 Text("Escape returns the dashboard to a window. Command-comma opens Settings.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Experimental locked-screen display") {
+                Toggle("Try showing the dashboard while locked", isOn: $store.document.experimentalLockedDisplay)
+                    .accessibilityIdentifier("experimentalLockedDisplay")
+                Text("Requests macOS login-window visibility for the dashboard during presentation. Visibility after locking, including native fullscreen and secondary displays, is unverified.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("If visible while locked, anyone nearby can read the dashboard’s widgets. This option does not keep the display awake.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if store.document.experimentalLockedDisplay {
+                    Text("To test: choose a display, click Present on Display, then lock your Mac yourself. Check that display and unlock to end the test. If the dashboard is hidden, try again with Use native fullscreen off. Turn this option off to stop requesting locked-screen visibility.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section("Actual-size preview") {
                 Text("The dashboard targets a 5-inch, 1280 × 720 display. Use the Dashboard’s actual-size preview and ruler calibration to check readability.")
                     .foregroundStyle(.secondary)
