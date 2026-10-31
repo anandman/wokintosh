@@ -1,6 +1,6 @@
 # Wokintosh 1.0.0
 
-A Macintosh Color Classic-style dashboard for a small display, with independently placed and resized widgets.
+A Macintosh Color Classic-style dashboard for a small display, with independently placed and resized widgets. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps) and its 5-inch 1280 × 720 display.
 
 - Individual Codex and Claude Code sessions across Macs and Linux machines, with attention first, durable Blocked states, and Done notices with explicit Review controls.
 - Apple Music playback, color album artwork and optional Apple catalog fallback for missing covers.

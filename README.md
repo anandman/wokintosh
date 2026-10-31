@@ -4,6 +4,8 @@ Download the signed and notarized macOS app from [GitHub Releases](https://githu
 
 A Color Classic-style dashboard for a small Mac display. Arrange independently resizable widgets for individual Codex and Claude Code sessions, Apple Music, system status, clock, weather, and calendar.
 
+Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps), with its **5-inch 1280 × 720 display**.
+
 ![Wokintosh dashboard showing eight Codex and Claude Code sessions across machines, attention and Done states with Review controls, Apple Music, a calendar agenda, and four machines’ system readings](docs/images/dashboard.png)
 
 One custom 1280 × 720 layout: Codex and Claude Code sessions across machines on the left, with attention and unreviewed Done work surfaced first; music and four machines on the right; and the next two calendar events below. Widgets can be duplicated, resized and rearranged independently; each has its own content and click-action settings.
