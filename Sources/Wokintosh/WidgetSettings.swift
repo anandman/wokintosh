@@ -6,7 +6,7 @@ struct WidgetSettingsView: View {
     @State private var inspectorTab = WidgetInspectorTab.content
     @State private var confirmReset = false
 
-    private enum WidgetInspectorTab: Hashable { case content, layout }
+    private enum WidgetInspectorTab: Hashable { case content, layout, actions }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -79,6 +79,9 @@ struct WidgetSettingsView: View {
                         .tabItem { Text("Content") }.tag(WidgetInspectorTab.content)
                     WidgetLayoutSettings(store: store, widget: widget)
                         .tabItem { Text("Layout") }.tag(WidgetInspectorTab.layout)
+                    WidgetActionSettings(store: store, widget: widget)
+                        .id(widget.id)
+                        .tabItem { Text("Actions") }.tag(WidgetInspectorTab.actions)
                 }
             }.padding(12)
         } else {

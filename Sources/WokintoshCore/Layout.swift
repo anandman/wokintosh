@@ -30,9 +30,10 @@ public struct Widget: Codable, Equatable, Identifiable, Sendable {
     public var systemOptions=SystemWidgetOptions()
     public var calendarOptions=CalendarSelectionOptions()
     public var weatherOptions=WeatherWidgetOptions()
+    public var action=WidgetAction()
     public init(kind: WidgetKind, frame: WidgetFrame) { self.id=UUID(); self.kind=kind; self.frame=frame; self.showFinished=false; self.showHelpers=false }
 
-    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions,weatherOptions }
+    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions,weatherOptions,action }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(UUID.self,forKey:.id);kind=try c.decode(WidgetKind.self,forKey:.kind);frame=try c.decode(WidgetFrame.self,forKey:.frame)
@@ -41,6 +42,7 @@ public struct Widget: Codable, Equatable, Identifiable, Sendable {
         systemOptions=try c.decodeIfPresent(SystemWidgetOptions.self,forKey:.systemOptions) ?? SystemWidgetOptions()
         calendarOptions=try c.decodeIfPresent(CalendarSelectionOptions.self,forKey:.calendarOptions) ?? CalendarSelectionOptions()
         weatherOptions=try c.decodeIfPresent(WeatherWidgetOptions.self,forKey:.weatherOptions) ?? WeatherWidgetOptions()
+        action=(try? c.decode(WidgetAction.self,forKey:.action)) ?? WidgetAction()
     }
 }
 public struct RemoteHost: Codable, Equatable, Identifiable, Sendable {
@@ -55,12 +57,11 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
     public var snapToGrid=true
     public var nativeFullscreen=true
     public var showDockIcon=true
-    public var experimentalLockedDisplay=false
     public var completions=CompletionTracker()
     public var blockedSessions=BlockedSessionTracker()
     public var reportedBlockedSessions=ReportedBlockedSessionTracker()
     public init(widgets: [Widget]) { self.widgets=widgets }
-    private enum CodingKeys: String, CodingKey { case layoutGridRevision,snapToGrid,nativeFullscreen,showDockIcon,experimentalLockedDisplay,completions,blockedSessions,reportedBlockedSessions,version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
+    private enum CodingKeys: String, CodingKey { case layoutGridRevision,snapToGrid,nativeFullscreen,showDockIcon,completions,blockedSessions,reportedBlockedSessions,version, widgets, textScale, remoteHosts, weatherPlace, latitude, longitude, fahrenheit, displayID, presentationEnabled, previewMode, previewWidthMM }
     public init(from decoder: Decoder) throws {
         let values=try decoder.container(keyedBy:CodingKeys.self)
         version=try values.decodeIfPresent(Int.self,forKey:.version) ?? 1
@@ -68,7 +69,6 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
         snapToGrid=try values.decodeIfPresent(Bool.self,forKey:.snapToGrid) ?? true
         nativeFullscreen=try values.decodeIfPresent(Bool.self,forKey:.nativeFullscreen) ?? true
         showDockIcon=try values.decodeIfPresent(Bool.self,forKey:.showDockIcon) ?? true
-        experimentalLockedDisplay=try values.decodeIfPresent(Bool.self,forKey:.experimentalLockedDisplay) ?? false
         completions=try values.decodeIfPresent(CompletionTracker.self,forKey:.completions) ?? CompletionTracker()
         blockedSessions=try values.decodeIfPresent(BlockedSessionTracker.self,forKey:.blockedSessions) ?? BlockedSessionTracker()
         reportedBlockedSessions=try values.decodeIfPresent(ReportedBlockedSessionTracker.self,forKey:.reportedBlockedSessions) ?? ReportedBlockedSessionTracker()
