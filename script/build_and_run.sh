@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/script/version.sh"
 BUILD_DIR="${WOKINTOSH_BUILD_DIR:-/private/tmp/wokintosh-build}"
 STAGE_DIR="${WOKINTOSH_STAGE_DIR:-/private/tmp/wokintosh-stage-${UID}}"
 APP_BUNDLE="$STAGE_DIR/Wokintosh.app"
@@ -21,7 +22,7 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
     rm -rf "$APP_BUNDLE/Contents/Resources/Wokintosh_Wokintosh.bundle"
     cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
 fi
-cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
+cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -29,8 +30,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>dev.wokintosh.dashboard</string>
 <key>CFBundleName</key><string>Wokintosh</string>
 <key>CFBundleDisplayName</key><string>Wokintosh</string>
-<key>CFBundleVersion</key><string>9</string>
-<key>CFBundleShortVersionString</key><string>0.8.1</string>
+<key>CFBundleVersion</key><string>${WOKINTOSH_BUILD_NUMBER}</string>
+<key>CFBundleShortVersionString</key><string>${WOKINTOSH_VERSION}</string>
 <key>CFBundleIconFile</key><string>Wokintosh.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>

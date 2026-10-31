@@ -1,6 +1,17 @@
 # Wokintosh
 
+Download the signed and notarized macOS app from [GitHub Releases](https://github.com/anandman/wokintosh/releases/latest). Open the DMG and drag Wokintosh to Applications. See [Quick start](QUICKSTART.md) and [release notes](RELEASE_NOTES.md).
+
 A Color Classic-style dashboard for a small Mac display. Arrange independently resizable widgets for individual Codex and Claude Code sessions, Apple Music, system status, clock, weather, and calendar.
+
+![Wokintosh dashboard showing agent statuses, Apple Music artwork and controls, a two-event calendar agenda, and system readings from four machines](docs/images/dashboard.png)
+
+One custom 1280 × 720 layout: agents needing attention on the left, music and four machines on the right, and the next two calendar events below. Widgets can be duplicated, resized and rearranged independently; each has its own content and click-action settings.
+
+- **Keep track of agents:** Codex and Claude Code sessions from Macs and Linux machines, with attention first and explicit Done/Review and Blocked states.
+- **Make a personal dashboard:** music with color artwork and playback controls, filtered calendars, weather, clocks, and CPU, memory and drive readings.
+- **Use the space you have:** adaptive compact layouts, optional grid snapping, adjustable text size, and fullscreen presentation.
+- **Make it interactive:** open a chosen app or link from each widget, with separate playback and Review controls.
 
 ## Install on the display Mac
 
@@ -30,7 +41,7 @@ install -m 755 ./wokintosh-agent "$HOME/.local/bin/wokintosh-agent"
 "$HOME/.local/bin/wokintosh-agent" snapshot --json
 ```
 
-In **Settings → Machines**, enter a friendly name, an SSH alias or `user@host`, and the collector path (default `~/.local/bin/wokintosh-agent`). Use **Install / Update over SSH** to check Python, copy the bundled collector with SCP, and verify a snapshot before the connection is saved. An existing collector is backed up during update; hooks and collector state are retained. Use **Connect Existing Collector** when it is already installed. A local collector-file export remains an advanced option. Saved machines share the settings page’s normal scrolling, so all machines and their Update/Remove controls remain reachable. SSH keys and host trust must already work from Terminal; setup uses batch mode and will show an error rather than ask for a password or trust an unfamiliar server automatically. Local collection also needs Python 3.10+; Homebrew and standard Python installation paths are detected.
+In **Settings → Machines**, enter a friendly name, an SSH alias or `user@host`, and the collector path (default `~/.local/bin/wokintosh-agent`). Use **Install / Update over SSH** to check Python, copy the bundled collector with SCP, and verify a snapshot before the connection is saved. An existing collector is backed up during update; hooks and collector state are retained. Use **Connect Existing Collector** when it is already installed. A local collector-file export remains an advanced option. Saved machines share the settings page’s normal scrolling, so all machines and their Update/Remove controls remain reachable. SSH keys and host trust must already work from Terminal; setup uses batch mode and will show an error rather than ask for a password or trust an unfamiliar server automatically. Local collection also needs Python 3.10+; the app checks the actual version and detects versioned Python, Homebrew and standard installation paths.
 
 Remote installation checks the interpreter’s actual version in the noninteractive SSH environment. A compatible `python3` keeps priority; otherwise it searches versioned executables such as `python3.12` in SSH’s PATH, standard installation directories, Homebrew version-specific prefixes and Python.org frameworks. The installed collector is pinned to the selected absolute interpreter path, so later polling does not depend on `python3` pointing to that version. Wokintosh does not change your PATH or Python symlinks. For a manual copy with an older default Python, invoke the script explicitly with your newer interpreter until you use Install / Update over SSH.
 
@@ -85,4 +96,14 @@ Music artwork and track details open the configured target; playback controls st
 - **System:** select this Mac or a connected agent machine. Choose CPU, memory and individual mounted drives in **Settings → Dashboard → Content**. Multiple drives can be shown together. At 100% text size, a compact 544 × 112 widget shows four readings in one row with larger values and quiet usage gauges. RAM is labeled used; drive values are labeled free; the gauges show used capacity. Narrower widgets or wider values reflow into a 2×2 arrangement when that fits, including four readings at 480 × 112. Compact values use less decimal precision; help/accessibility retains the fuller reading. Larger text or additional readings show an explicit overflow count; enlarge the widget to reveal them. CPU, memory and storage are measured by the collector. Update remote collectors for drive inventory; older collectors still supply their original disk reading. Drive selections identify mount points; a missing selected mount shows unavailable data. Usage gauges stay visible in compact layouts; unavailable readings show a dash. CPU uses host counter deltas, with the first sample unavailable until a second poll supplies an interval.
 - **Clock:** follows the Mac's locale and time settings. A menu-bar clock remains visible independently of the optional clock widget.
 
-This is a locally signed development build, not an App Store/notarized release. No account or telemetry service is included. Physical legibility should be checked on the actual Wokyis panel at your usual viewing distance; its native resolution is 1280×720.
+Release builds are Developer ID signed and notarized for direct distribution. No account or telemetry service is included. Physical legibility should be checked on the actual Wokyis panel at your usual viewing distance; its native resolution is 1280×720.
+
+## Build and distribution
+
+Build with `script/build_and_run.sh --build-only` or create an ad hoc development ZIP with `script/package.sh`. Build products and staging stay under `/private/tmp`, outside the source folder. Run `swift test --scratch-path /private/tmp/wokintosh-build` and `python3 -m unittest discover -s collector/tests`.
+
+For a distributable release, set `WOKINTOSH_SIGNING_IDENTITY` to a Developer ID Application certificate fingerprint and `WOKINTOSH_NOTARY_PROFILE` to a saved notarytool keychain profile, then run `script/release.sh`. This signs with hardened runtime and the Music automation/Calendar entitlements, notarizes and staples the app, creates and notarizes a DMG, and writes a collector archive and SHA-256 checksums to `dist/`. It does not publish a GitHub release or modify an installed app.
+
+## Contributing and license
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and pull request guidance. Wokintosh’s original code is available under the [MIT license](LICENSE). Third-party names, icons, fonts, music artwork and services retain their owners’ rights; see [credits](THIRD_PARTY_NOTICES.md).
