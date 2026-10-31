@@ -4,9 +4,9 @@ Download the signed and notarized macOS app from [GitHub Releases](https://githu
 
 A Color Classic-style dashboard for a small Mac display. Arrange independently resizable widgets for individual Codex and Claude Code sessions, Apple Music, system status, clock, weather, and calendar.
 
-![Wokintosh dashboard showing agent statuses, Apple Music artwork and controls, a two-event calendar agenda, and system readings from four machines](docs/images/dashboard.png)
+![Wokintosh dashboard showing eight Codex and Claude Code sessions across machines, attention and Done states with Review controls, Apple Music, a calendar agenda, and four machines’ system readings](docs/images/dashboard.png)
 
-One custom 1280 × 720 layout: agents needing attention on the left, music and four machines on the right, and the next two calendar events below. Widgets can be duplicated, resized and rearranged independently; each has its own content and click-action settings.
+One custom 1280 × 720 layout: Codex and Claude Code sessions across machines on the left, with attention and unreviewed Done work surfaced first; music and four machines on the right; and the next two calendar events below. Widgets can be duplicated, resized and rearranged independently; each has its own content and click-action settings.
 
 - **Keep track of agents:** Codex and Claude Code sessions from Macs and Linux machines, with attention first and explicit Done/Review and Blocked states.
 - **Make a personal dashboard:** music with color artwork and playback controls, filtered calendars, weather, clocks, and CPU, memory and drive readings.
