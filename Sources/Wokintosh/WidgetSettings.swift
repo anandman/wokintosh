@@ -4,66 +4,87 @@ import WokintoshCore
 struct WidgetSettingsView: View {
     @ObservedObject var store: DashboardStore
     @State private var inspectorTab = WidgetInspectorTab.content
+    @State private var confirmReset = false
 
     private enum WidgetInspectorTab: Hashable { case content, layout }
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                List(selection: $store.selectedID) {
-                    ForEach(store.document.widgets) { widget in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Label(widgetSettingsName(widget, in: store.document.widgets), systemImage: widget.kind.settingsSymbol)
-                            if widget.kind == .weather {
-                                Text(widget.weatherOptions.place.isEmpty ? "Choose a location" : widget.weatherOptions.place)
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                        .tag(widget.id)
-                        .contextMenu { WidgetActions(store: store, widget: widget) }
-                    }
-                }
-                .listStyle(.sidebar)
-                .accessibilityLabel("Widgets to configure")
-                Divider()
-                HStack {
-                    Menu {
-                        ForEach(WidgetKind.allCases) { kind in
-                            Button(kind.title) { store.add(kind) }
-                        }
-                    } label: { Label("Add Widget", systemImage: "plus") }
-                    .menuStyle(.borderlessButton)
-                    Spacer()
-                }.padding(12)
-            }.frame(width: 205)
+            sidebar
             Divider()
-            if let widget = store.selectedWidget {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Label(widgetSettingsName(widget, in: store.document.widgets), systemImage: widget.kind.settingsSymbol)
-                            .font(.title3.bold())
-                        Spacer()
-                        Menu {
-                            Button("Duplicate") { store.duplicate(widget.id) }
-                            Button("Remove", role: .destructive) { store.remove(widget.id) }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .accessibilityLabel("Widget actions")
-                    }
-                    TabView(selection: $inspectorTab) {
-                        WidgetContentSettings(store: store, widget: widget)
-                            .tabItem { Text("Content") }.tag(WidgetInspectorTab.content)
-                        WidgetLayoutSettings(store: store, widget: widget)
-                            .tabItem { Text("Layout") }.tag(WidgetInspectorTab.layout)
-                    }
-                }.padding(16)
-            } else {
-                ContentUnavailableView("Choose a Widget", systemImage: "square.grid.2x2", description: Text("Select a dashboard widget or add one to configure its content and layout."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            EditorView(store: store)
+                .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            inspector
+                .frame(minWidth: 330, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
         }
         .onChange(of: store.selectedID) { _, _ in inspectorTab = .content }
+        .confirmationDialog("Restore the default widget layout?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Restore Default Layout", role: .destructive) { store.resetLayout() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the current widgets and their individual content settings. Connections and display preferences stay saved.")
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            Text("Dashboard Widgets").font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            List(selection: $store.selectedID) {
+                ForEach(store.document.widgets) { widget in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(widgetSettingsName(widget, in: store.document.widgets), systemImage: widget.kind.settingsSymbol)
+                        if widget.kind == .weather {
+                            Text(widget.weatherOptions.place.isEmpty ? "Choose a location" : widget.weatherOptions.place)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    .tag(widget.id)
+                    .contextMenu { WidgetActions(store: store, widget: widget) }
+                }
+            }
+            .listStyle(.sidebar)
+            .accessibilityLabel("Dashboard widgets")
+            Divider()
+            HStack {
+                Menu {
+                    ForEach(WidgetKind.allCases) { kind in
+                        Button(kind.title) { store.add(kind) }
+                    }
+                } label: { Label("Add Widget", systemImage: "plus") }
+                .menuStyle(.borderlessButton)
+                Spacer()
+                Menu {
+                    if let widget = store.selectedWidget {
+                        WidgetActions(store: store, widget: widget)
+                        Divider()
+                    }
+                    Button("Restore Default Layout…", role: .destructive) { confirmReset = true }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Dashboard widget actions")
+            }.padding(12)
+        }.frame(width: 190)
+    }
+
+    @ViewBuilder private var inspector: some View {
+        if let widget = store.selectedWidget {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(widgetSettingsName(widget, in: store.document.widgets), systemImage: widget.kind.settingsSymbol)
+                    .font(.title3.bold())
+                TabView(selection: $inspectorTab) {
+                    WidgetContentSettings(store: store, widget: widget)
+                        .tabItem { Text("Content") }.tag(WidgetInspectorTab.content)
+                    WidgetLayoutSettings(store: store, widget: widget)
+                        .tabItem { Text("Layout") }.tag(WidgetInspectorTab.layout)
+                }
+            }.padding(12)
+        } else {
+            ContentUnavailableView("Choose a Widget", systemImage: "square.grid.2x2", description: Text("Select a dashboard widget or add one to configure its content and layout."))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 
@@ -109,6 +130,7 @@ private struct WidgetContentSettings: View {
                 Section("Apple Music") {
                     ConnectionStatusLabel(connected: store.native.musicConnected, known: store.native.musicConnectionKnown)
                     Text(store.native.music.status).foregroundStyle(.secondary)
+                    if !store.native.music.artworkStatus.isEmpty { Text(store.native.music.artworkStatus).font(.caption).foregroundStyle(.secondary) }
                     Button("Manage Connections…") { store.openSettings(.connections) }
                 }
                 Section {
@@ -169,19 +191,17 @@ private struct SystemWidgetSettings: View {
                     if drives.isEmpty && selected.isEmpty {
                         Text("Connect this machine to discover mounted drives.").foregroundStyle(.secondary)
                     } else {
-                        List {
-                            ForEach(drives) { drive in
-                                Toggle(isOn: driveSelection(drive.id, available: drives)) {
-                                    VStack(alignment: .leading) {
-                                        Text(drive.name)
-                                        Text(drive.mountPoint).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }.toggleStyle(.checkbox)
-                            }
-                            ForEach(selected.filter { id in !drives.contains { $0.id == id } }, id: \.self) { id in
-                                Toggle("Unavailable: \(id)", isOn: driveSelection(id, available: drives)).toggleStyle(.checkbox)
-                            }
-                        }.frame(height: 150).accessibilityLabel("Mounted drives")
+                        SettingsInventoryScrollView(
+                            identifier: "driveInventory",
+                            accessibilityLabel: "Mounted drives",
+                            items: drives.map { drive in
+                                SettingsInventoryItem(id: drive.id, title: drive.name, subtitle: drive.mountPoint, isSelected: selected.contains(drive.id))
+                            } + selected.filter { id in !drives.contains { $0.id == id } }.map { id in
+                                SettingsInventoryItem(id: id, title: "Unavailable drive", subtitle: id, isSelected: true)
+                            },
+                            onToggle: { id, on in driveSelection(id, available: drives).wrappedValue = on }
+                        )
+                        .frame(height: 160)
                     }
                     Text("Older collectors report the startup disk only. Missing drives stay unavailable.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -238,14 +258,16 @@ private struct CalendarWidgetSettings: View {
                 if calendars.isEmpty {
                     Text("Connect Calendar to choose individual calendars.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    List(calendars) { calendar in
-                        Toggle(isOn: calendarSelection(calendar.id)) {
-                            VStack(alignment: .leading) {
-                                Text(calendar.title)
-                                Text(calendar.sourceTitle).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }.toggleStyle(.checkbox)
-                    }.frame(height: 125).accessibilityLabel("Calendars for this widget")
+                    SettingsInventoryScrollView(
+                        identifier: "calendarInventory",
+                        accessibilityLabel: "Calendars for this widget",
+                        items: calendars.map { calendar in
+                            SettingsInventoryItem(id: calendar.id, title: calendar.title, subtitle: calendar.sourceTitle,
+                                                  isSelected: widget.calendarOptions.calendarIDs?.contains(calendar.id) ?? true)
+                        },
+                        onToggle: { id, on in calendarSelection(id).wrappedValue = on }
+                    )
+                    .frame(height: 160)
                 }
                 HStack {
                     if widget.calendarOptions.calendarIDs?.isEmpty == true {
@@ -307,8 +329,7 @@ private struct WidgetLayoutSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                Button("Open Layout Editor…") { store.showEditor?() }
-                Text("Move widgets by their title bars and resize them with the purple corner. Grid snapping is in Appearance.")
+                Text("Move widgets by their title bars and resize them with the purple corner in the preview. Use Snap to grid or Align to Grid above the preview for 16-pixel alignment.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
@@ -319,7 +340,7 @@ private struct WidgetLayoutSettings: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
             TextField(label, value: Binding(
                 get: { widget.frame[keyPath: key] * dimension },
-                set: { value in store.change(widget.id) { $0.frame[keyPath: key] = value / dimension } }
+                set: { value in store.changeGeometry(widget.id) { $0[keyPath: key] = value / dimension } }
             ), format: .number.precision(.fractionLength(0)))
             .textFieldStyle(.roundedBorder).accessibilityLabel("Widget \(label), in pixels")
         }

@@ -8,17 +8,20 @@ typealias DashboardWidget = WokintoshCore.Widget
 enum SettingsTab: String, CaseIterable, Identifiable {
     case widgets, connections, machines, appearance, display
     var id:String { rawValue }
-    var title:String { switch self { case .widgets:return "Widgets";case .connections:return "Connections";case .machines:return "Machines";case .appearance:return "Appearance";case .display:return "Display" } }
+    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .appearance:return "Appearance";case .display:return "Display" } }
 }
 
 @MainActor final class DashboardStore: ObservableObject {
     @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave() } }
-    @Published var settingsTab=SettingsTab.machines
+    @Published var settingsTab=SettingsTab.widgets
     @Published private var reviewedPreviewIDs=Set<String>()
+    @Published private var blockedPreviewIDs=Set<String>()
     @Published var selectedID: UUID?
     @Published var feeds: [String: FeedStatus] = [:]
     @Published var refreshing = false
-    @Published var notice: String?
+    var presentMessage: ((AppMessage) -> Void)?
+    private var startupMessage: AppMessage?
+    private var lastSaveError: String?
     let native = NativeSources()
     let dataDirectory: URL
     private var layoutNeedsBackup=false
@@ -46,7 +49,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         loaded.repairGeometry()
         if arguments.contains("--preview") { loaded.previewMode = true }
         document = loaded
-        notice=loadNotice
+        startupMessage=loadNotice.map { AppMessage(title:"Saved Layout Could Not Be Read",message:$0,isError:true) }
         selectedID = loaded.widgets.first?.id
         native.updateWidgets(loaded.widgets)
         nativeSubscription = native.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -54,6 +57,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     func start() {
         guard pollTask == nil else { return }
+        if let startupMessage { presentMessage?(startupMessage);self.startupMessage=nil }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -80,7 +84,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
                 layoutNeedsBackup=false
             }
             try JSONEncoder().encode(document).write(to:file,options:.atomic)
-        } catch { notice = "Could not save layout: \(error.localizedDescription)" }
+            lastSaveError=nil
+        } catch {
+            let message="Your changes could not be saved. Check that the Wokintosh data folder is writable.\n\n\(error.localizedDescription)"
+            if lastSaveError != message { presentMessage?(AppMessage(title:"Could Not Save Layout",message:message,isError:true));lastSaveError=message }
+        }
     }
     var selectedWidget: Widget? { document.widgets.first { $0.id == selectedID } }
     func change(_ id: UUID, _ transform: (inout Widget) -> Void) {
@@ -88,9 +96,22 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         transform(&document.widgets[index])
         document.widgets[index].frame = document.widgets[index].frame.clamped(for: document.widgets[index].kind)
     }
+    func changeGeometry(_ id: UUID, _ transform: (inout WidgetFrame) -> Void) {
+        let snap=document.snapToGrid
+        change(id) { widget in
+            transform(&widget.frame)
+            if snap { widget.frame=DashboardGrid.snappedFrame(widget.frame,kind:widget.kind) }
+        }
+    }
+    func alignWidgetsToGrid() {
+        document.widgets=document.widgets.map { original in
+            var widget=original;widget.frame=DashboardGrid.snappedFrame(widget.frame,kind:widget.kind);return widget
+        }
+    }
     func add(_ kind: WidgetKind) {
         let offset = Double(document.widgets.count % 5) * 0.025
-        let widget = Widget(kind: kind, frame: WidgetFrame(x: 0.2 + offset, y: 0.2 + offset, width: 0.4, height: kind == .agents ? 0.5 : 0.3).clamped(for: kind))
+        var widget = Widget(kind: kind, frame: WidgetFrame(x: 0.2 + offset, y: 0.2 + offset, width: 0.4, height: kind == .agents ? 0.5 : 0.3).clamped(for: kind))
+        if document.snapToGrid { widget.frame=DashboardGrid.snappedFrame(widget.frame,kind:kind) }
         document.widgets.append(widget)
         selectedID = widget.id
     }
@@ -101,12 +122,24 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     func duplicate(_ id:UUID) {
         guard var copy=document.widgets.first(where:{$0.id == id}) else { return }
         copy.id=UUID();copy.frame=WidgetFrame(x:copy.frame.x+0.025,y:copy.frame.y+0.025,width:copy.frame.width,height:copy.frame.height).clamped(for:copy.kind)
+        if document.snapToGrid { copy.frame=DashboardGrid.snappedFrame(copy.frame,kind:copy.kind) }
         document.widgets.append(copy);selectedID=copy.id
     }
     func duplicateSelected() { if let selectedID { duplicate(selectedID) } }
     func reviewCompletion(_ row:SessionRow) {
         if document.previewMode { reviewedPreviewIDs.insert(row.id) }
         else { document.completions.review(row.id) }
+    }
+    func isManuallyBlocked(_ row:SessionRow) -> Bool {
+        document.previewMode ? blockedPreviewIDs.contains(row.id) : document.blockedSessions.contains(row.id)
+    }
+    func markBlocked(_ row:SessionRow) {
+        if document.previewMode { blockedPreviewIDs.insert(row.id);reviewedPreviewIDs.insert(row.id) }
+        else { document.blockedSessions.mark(row);document.completions.review(row.id) }
+    }
+    func clearManualBlocked(_ row:SessionRow) {
+        if document.previewMode { blockedPreviewIDs.remove(row.id) }
+        else { document.blockedSessions.clear(row.id) }
     }
     func reviewAllCompletions(for widget:Widget) { for row in rows(for:widget) where row.completionPending { reviewCompletion(row) } }
     func resetLayout() { document.widgets = DashboardDocument.defaultLayout.widgets; selectedID = document.widgets.first?.id }
@@ -133,17 +166,25 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         if document.previewMode {
             for var row in previewRows() {
                 if reviewedPreviewIDs.contains(row.id) { row.completionPending=false }
+                if blockedPreviewIDs.contains(row.id) { row.session.state = .blocked;row.session.activity="Manually marked blocked";row.completionPending=false }
                 raw[row.id]=row
             }
         } else {
             for row in feedRows() { raw[row.id]=row }
-            for completion in document.completions.pending { raw[completion.id]=completion.row }
+            for completion in document.completions.pending where !document.blockedSessions.contains(completion.id) && !document.reportedBlockedSessions.contains(completion.id) {
+                if let current=raw[completion.id],current.session.state == .blocked || current.session.goalBlocked == true { continue }
+                raw[completion.id]=completion.row
+            }
         }
-        return raw.values.filter { row in
+        let connectedHosts=Set(feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
+        let completeHosts=Set(feeds.values.filter { $0.connected && ($0.snapshot?.errors?.isEmpty ?? true) }.compactMap{$0.snapshot?.host.id})
+        let reported=document.previewMode ? Array(raw.values) : document.reportedBlockedSessions.applying(to:Array(raw.values),connectedHostIDs:completeHosts)
+        let rows=document.previewMode ? reported : document.blockedSessions.applying(to:reported,connectedHostIDs:connectedHosts)
+        return rows.filter { row in
             if let source=widget.hostID,source != row.hostID { return false }
             if let provider=widget.provider,provider != row.session.provider { return false }
             if !widget.showHelpers && (row.session.isHelper || row.session.parentId != nil) { return false }
-            if row.completionPending { return true }
+            if row.completionPending || row.session.state == .blocked || row.session.goalBlocked == true || isManuallyBlocked(row) { return true }
             let age=Date().timeIntervalSince(row.session.updatedAt)
             if !widget.showFinished && (row.session.state == .finished || row.session.state == .idle || (row.session.state == .unknown && age>7200)) { return false }
             return !widget.showFinished || age<86400
@@ -184,7 +225,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         defer { refreshing=false }
         if !document.previewMode {
             await refreshFeeds()
-            var completions=document.completions;completions.ingest(feedRows(),connectedHostIDs:feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
+            var reported=document.reportedBlockedSessions
+            reported.ingest(feedRows(),connectedHostIDs:Set(feeds.values.filter { $0.connected && ($0.snapshot?.errors?.isEmpty ?? true) }.compactMap{$0.snapshot?.host.id}))
+            if reported != document.reportedBlockedSessions { document.reportedBlockedSessions=reported }
+            let connectedHosts=Set(feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
+            let completeHosts=Set(feeds.values.filter { $0.connected && ($0.snapshot?.errors?.isEmpty ?? true) }.compactMap{$0.snapshot?.host.id})
+            let reportedRows=document.reportedBlockedSessions.applying(to:feedRows(),connectedHostIDs:completeHosts)
+            let completionRows=document.blockedSessions.applying(to:reportedRows,connectedHostIDs:connectedHosts)
+            var completions=document.completions;completions.ingest(completionRows,connectedHostIDs:Array(connectedHosts))
             if completions != document.completions { document.completions=completions }
             await native.refresh(document:document)
         }
@@ -224,7 +272,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
 
     func installHooks(provider: String) async {
-        guard ["codex", "claude"].contains(provider), let python = pythonPath, let collector = collectorURL else { notice="Collector unavailable"; return }
+        guard ["codex", "claude"].contains(provider), let python = pythonPath, let collector = collectorURL else { presentMessage?(AppMessage(title:"Collector Unavailable",message:"Install Python 3.10 or later and reopen Wokintosh before enabling observers.",isError:true)); return }
         do {
             let helpers=dataDirectory.appendingPathComponent("bin",isDirectory:true)
             try FileManager.default.createDirectory(at:helpers,withIntermediateDirectories:true)
@@ -232,14 +280,16 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             try Data(contentsOf:collector).write(to:installed,options:.atomic)
             try FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:installed.path)
             let result = try await Task.detached { try CommandRunner.run(python, arguments: [installed.path, "install-hooks", "--provider", provider], timeout: 5) }.value
-            notice=String(data: result, encoding: .utf8)
-        } catch { notice=error.localizedDescription }
+            let output=String(data:result,encoding:.utf8) ?? "Observers updated."
+            let title=provider == "codex" ? "Review Codex Observers" : "Claude Code Observers Updated"
+            presentMessage?(AppMessage(title:title,message:output))
+        } catch { presentMessage?(AppMessage(title:"Could Not Update Observers",message:error.localizedDescription,isError:true)) }
     }
     func previewRows() -> [SessionRow] {
-        let names=["Calendar sync", "Collector tests", "Window layout", "Auth review", "Weather cache", "Music metadata", "Layout persistence", "Release notes", "Parser coverage", "Linux collector", "Artwork cache", "Window placement"]
+        let names=["Calendar sync", "Collector tests", "Window layout", "Auth review", "Acceptance testing", "Music metadata", "Layout persistence", "Release notes", "Parser coverage", "Linux collector", "Artwork cache", "Window placement"]
         return names.enumerated().map { index, title in
             let provider = [0,3,5,7,9,11].contains(index) ? "claude" : "codex"
-            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : .working), updatedAt: Date().addingTimeInterval(Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : "Working")),completionPending:index>=2 && index<4)
+            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : (index == 4 ? .blocked : .working)), updatedAt: Date().addingTimeInterval(Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : (index == 4 ? "Manual acceptance pending" : "Working"))),completionPending:index>=2 && index<4)
         }
     }
 }

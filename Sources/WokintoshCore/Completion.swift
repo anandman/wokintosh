@@ -43,6 +43,13 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
                 pending[index].session.title=row.session.title
                 pending[index].session.project=row.session.project
             }
+            if row.session.state == .blocked || row.session.goalBlocked == true {
+                review(row.id)
+                let receipt=max(row.session.updatedAt,lastSeen[row.id] ?? .distantPast,reviewed[row.id] ?? .distantPast)
+                reviewed[row.id]=receipt;lastSeen[row.id]=receipt
+                active.removeValue(forKey:row.id)
+                continue // A goal can remain blocked after its last completed turn.
+            }
             if let seen=lastSeen[row.id],seen>row.session.updatedAt { continue }
             lastSeen[row.id]=row.session.updatedAt
             if row.session.state != .finished,

@@ -11,6 +11,7 @@ struct ConnectionsSettingsView: View {
             Section("Apple Music") {
                 ConnectionStatusLabel(connected: store.native.musicConnected, known: store.native.musicConnectionKnown)
                 Text(store.native.music.status).foregroundStyle(.secondary)
+                if !store.native.music.artworkStatus.isEmpty { Text(store.native.music.artworkStatus).font(.caption).foregroundStyle(.secondary) }
                 if store.native.musicConnected {
                     Toggle("Read Now Playing from Apple Music", isOn: Binding(
                         get: { store.native.musicEnabled },
@@ -79,6 +80,7 @@ struct ConnectionStatusLabel: View {
     }
 }
 
+@MainActor
 struct MachinesSettingsView: View {
     @ObservedObject var store: DashboardStore
     @State private var machineName = ""
@@ -86,53 +88,96 @@ struct MachinesSettingsView: View {
     @State private var collectorPath = "~/.local/bin/wokintosh-agent"
     @State private var message: String?
     @State private var confirmHooks: String?
+    @State private var pendingInstall: RemoteHost?
+    @State private var working = false
+    @State private var progress = ""
 
     var body: some View {
         Form {
             Section("Agent machines") {
-                Text("This Mac is collected automatically. Connect another Mac or Linux host over SSH with keys.")
+                Text("This Mac is collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust.")
                     .font(.caption).foregroundStyle(.secondary)
                 List {
                     machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
                     ForEach(store.document.remoteHosts) { host in
-                        HStack {
+                        VStack(alignment: .leading, spacing: 8) {
                             machineRow(name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
-                            Spacer()
-                            Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
-                        }
+                            HStack {
+                                Button("Install / Update…") { pendingInstall = host }
+                                    .help("Upload the bundled collector to this machine’s saved path")
+                                Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
+                            }.disabled(working)
+                        }.padding(.vertical, 3)
                     }
-                }.frame(height: 130).accessibilityLabel("Connected agent machines")
-                HStack {
-                    TextField("Machine name", text: $machineName)
-                    TextField("SSH alias or user@host", text: $destination)
-                }
-                TextField("Remote collector path", text: $collectorPath)
-                HStack {
-                    Button("Add Machine") { addMachine() }
-                        .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button("Export Collector…") { exportCollector() }
-                    Spacer()
-                    Button { Task { await store.refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                        .disabled(store.refreshing)
-                }
-                Text("Install the executable as ~/.local/bin/wokintosh-agent (Python 3.10+). Configure SSH keys and host trust in Terminal first. Update remote collectors for multiple-drive readings.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let message { Text(message).font(.caption).textSelection(.enabled) }
+                }.frame(height: 170).accessibilityLabel("Connected agent machines")
             }
-            Section("Wokintosh status observers") {
-                Text("Named observers report status and preserve existing hooks with backups. They never approve, deny, or continue agent work.")
+            Section("Add a remote machine") {
+                TextField("Machine name", text: $machineName)
+                TextField("SSH alias or user@host", text: $destination)
+                TextField("Remote collector path", text: $collectorPath)
+                VStack(alignment: .leading, spacing: 8) {
+                    Button("Install / Update over SSH…") { if let host = formHost() { pendingInstall = host } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
+                    HStack {
+                        Button("Connect Existing Collector") { if let host = formHost() { connect(host) } }
+                            .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
+                        Menu("Advanced") {
+                            Button("Save Collector to File…") { exportCollector() }
+                        }.disabled(working)
+                        Spacer()
+                    }
+                }
+                Text("Install copies this app’s collector with SCP and verifies Python 3.10+ and a working snapshot. Connect Existing only verifies a collector you already installed. Set up SSH keys and host trust in Terminal first.")
                     .font(.caption).foregroundStyle(.secondary)
-                HStack {
+                Text("Observer hooks are optional and configured on each machine separately. Installing a collector preserves its state and existing hook settings.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if working {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progress).font(.caption).foregroundStyle(.secondary)
+                    }.accessibilityElement(children: .combine)
+                }
+                if let message {
+                    HStack(alignment: .top) {
+                        Text(message).font(.caption).textSelection(.enabled)
+                        Spacer()
+                        Button { self.message = nil } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).accessibilityLabel("Dismiss machine information")
+                    }
+                }
+                Button { Task { await store.refresh() } } label: { Label("Refresh Machines", systemImage: "arrow.clockwise") }
+                    .disabled(store.refreshing || working)
+            }
+            .disabled(working)
+            Section("Observers on This Mac") {
+                Text("Optional named observers report status and preserve existing hooks with backups. These buttons update this Mac only. They never approve, deny, or continue agent work.")
+                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
                     Button("Enable / Update Codex Hooks…") { confirmHooks = "codex" }
                     Button("Enable / Update Claude Code Hooks…") { confirmHooks = "claude" }
-                }
-                Text("In Codex /hooks, review each Wokintosh event command that needs trust. New or changed commands require review again. Restart affected sessions after updating.")
+                }.disabled(working)
+                Text("In Codex /hooks, review each new or changed Wokintosh event command that needs trust. Reload or restart affected clients after updating observers.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+        .onChange(of: store.settingsTab) { _, tab in if tab != .machines { message = nil } }
         .textFieldStyle(.roundedBorder)
-        .confirmationDialog("Enable or update Wokintosh status observers?", isPresented: Binding(
+        .confirmationDialog("Install or update the remote collector?", isPresented: Binding(
+            get: { pendingInstall != nil }, set: { if !$0 { pendingInstall = nil } }
+        ), titleVisibility: .visible) {
+            Button("Install / Update over SSH") {
+                if let host = pendingInstall { install(host) }
+                pendingInstall = nil
+            }
+            Button("Cancel", role: .cancel) { pendingInstall = nil }
+        } message: {
+            if let host = pendingInstall {
+                Text("Copy the bundled collector to \(host.collectorPath) on \(host.destination). If a file already exists there, keep a backup beside it before replacing it. Restore the previous collector if verification fails. Existing collector state and hook settings are preserved.")
+            }
+        }
+        .confirmationDialog("Enable or update observers on This Mac?", isPresented: Binding(
             get: { confirmHooks != nil }, set: { if !$0 { confirmHooks = nil } }
         ), titleVisibility: .visible) {
             Button("Enable / Update \(confirmHooks == "codex" ? "Codex" : "Claude Code") Hooks") {
@@ -141,7 +186,9 @@ struct MachinesSettingsView: View {
             }
             Button("Cancel", role: .cancel) { confirmHooks = nil }
         } message: {
-            Text("Wokintosh adds observational event commands and backs up existing settings. Review every new or changed Wokintosh command listed by Codex in /hooks; trust is not one shared approval. Restart affected sessions after updating.")
+            Text(confirmHooks == "codex"
+                 ? "Wokintosh adds observational event commands on this Mac and backs up existing settings. Review every new or changed Wokintosh command listed by Codex in /hooks. Restart affected sessions after updating."
+                 : "Wokintosh adds observational Claude Code event commands on this Mac and backs up existing settings. Reload or restart affected Claude Code clients after updating.")
         }
     }
 
@@ -158,32 +205,84 @@ struct MachinesSettingsView: View {
         }
     }
 
-    private func addMachine() {
+    private func formHost() -> RemoteHost? {
         let trimmedDestination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPath = collectorPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard RemoteCommand.arguments(destination: trimmedDestination, collectorPath: trimmedPath) != nil else {
-            message = "Use an SSH alias or user@host and an absolute or ~/ collector path, without shell commands."
-            return
+            report("Check Machine Details", "Use an SSH alias or user@host and an absolute or ~/ collector file path, without shell commands or .. components.")
+            return nil
         }
         let trimmedName = machineName.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.document.remoteHosts.append(RemoteHost(name: trimmedName.isEmpty ? trimmedDestination : trimmedName, destination: trimmedDestination, collectorPath: trimmedPath))
-        machineName = ""
-        destination = ""
+        var host = store.document.remoteHosts.first { $0.destination == trimmedDestination && $0.collectorPath == trimmedPath }
+            ?? RemoteHost(name: trimmedName.isEmpty ? trimmedDestination : trimmedName, destination: trimmedDestination, collectorPath: trimmedPath)
+        if !trimmedName.isEmpty { host.name = trimmedName }
+        return host
+    }
+
+    private func install(_ host: RemoteHost) {
+        guard !working else { return }
+        guard let collector = store.collectorURL else { report("Collector Unavailable", "The app’s bundled collector is missing. Reinstall Wokintosh, then retry."); return }
+        working = true
         message = nil
-        Task { await store.refresh() }
+        progress = "Checking SSH…"
+        Task {
+            defer { working = false; progress = "" }
+            do {
+                let result = try await RemoteInstaller.install(host: host, collectorURL: collector) { value in
+                    Task { @MainActor in progress = value }
+                }
+                saveConnectedHost(host, snapshot: result.snapshot)
+                var details = "Installed and verified on \(host.name) using Python \(result.pythonVersion)."
+                if let backup = result.backupPath { details += " Previous collector: \(backup)" }
+                if let warning = result.cleanupWarning { details += " \(warning)" }
+                if store.settingsTab == .machines { message = details }
+            } catch { report("Could Not Install on \(host.name)", error.localizedDescription) }
+        }
+    }
+
+    private func connect(_ host: RemoteHost) {
+        guard !working else { return }
+        working = true
+        message = nil
+        progress = "Checking the existing collector over SSH…"
+        Task {
+            defer { working = false; progress = "" }
+            do {
+                let snapshot = try await RemoteInstaller.connect(host: host)
+                saveConnectedHost(host, snapshot: snapshot)
+                if store.settingsTab == .machines { message = "Connected to the existing collector on \(host.name)." }
+            } catch { report("Could Not Connect to \(host.name)", error.localizedDescription) }
+        }
+    }
+
+    private func saveConnectedHost(_ host: RemoteHost, snapshot: Snapshot) {
+        if let index = store.document.remoteHosts.firstIndex(where: { $0.id == host.id }) {
+            store.document.remoteHosts[index] = host
+        } else {
+            store.document.remoteHosts.append(host)
+        }
+        store.feeds[host.id.uuidString] = FeedStatus(name: host.name, snapshot: snapshot, refreshedAt: Date())
+        if destination.trimmingCharacters(in: .whitespacesAndNewlines) == host.destination {
+            machineName = ""
+            destination = ""
+        }
+    }
+
+    private func report(_ title: String, _ text: String) {
+        store.presentMessage?(AppMessage(title: title, message: text, isError: true))
     }
 
     private func exportCollector() {
-        guard let source = store.collectorURL else { message = "Bundled collector is missing."; return }
+        guard let source = store.collectorURL else { report("Collector Unavailable", "The app’s bundled collector is missing."); return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "wokintosh-agent"
-        panel.title = "Export Mac / Linux Collector"
+        panel.title = "Save Collector to a Local File"
         if panel.runModal() == .OK, let url = panel.url {
             do {
                 try Data(contentsOf: source).write(to: url, options: .atomic)
                 try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-                message = "Collector exported. Install it on your agent machine, then connect that machine above."
-            } catch { message = error.localizedDescription }
+                message = "Collector saved to \(url.path). Copy it to your machine yourself, then use Connect Existing Collector."
+            } catch { report("Could Not Save Collector", error.localizedDescription) }
         }
     }
 }

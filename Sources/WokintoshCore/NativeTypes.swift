@@ -3,10 +3,10 @@ import Foundation
 public struct NowPlayingInfo: Equatable, Sendable {
     public var title: String; public var artist: String; public var album: String
     public var isPlaying: Bool; public var position: Double; public var duration: Double
-    public var updatedAt: Date; public var artworkURL: URL?; public var status: String
-    public init(title: String = "", artist: String = "", album: String = "", isPlaying: Bool = false, position: Double = 0, duration: Double = 0, updatedAt: Date = Date(), artworkURL: URL? = nil, status: String = "Connect Apple Music") {
+    public var updatedAt: Date; public var artworkURL: URL?; public var status: String; public var artworkStatus: String
+    public init(title: String = "", artist: String = "", album: String = "", isPlaying: Bool = false, position: Double = 0, duration: Double = 0, updatedAt: Date = Date(), artworkURL: URL? = nil, status: String = "Connect Apple Music", artworkStatus: String = "") {
         self.title = title; self.artist = artist; self.album = album; self.isPlaying = isPlaying
-        self.position = position; self.duration = duration; self.updatedAt = updatedAt; self.artworkURL = artworkURL; self.status = status
+        self.position = position; self.duration = duration; self.updatedAt = updatedAt; self.artworkURL = artworkURL; self.status = status; self.artworkStatus = artworkStatus
     }
     public var hasTrack: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }

@@ -53,6 +53,7 @@ struct RetroWindow<Content: View>: View {
 private enum RetroAssets {
     static let mac=Bundle.module.url(forResource:"mac",withExtension:"png").flatMap(NSImage.init(contentsOf:))
     static let codex=Bundle.module.url(forResource:"codex",withExtension:"png").flatMap(NSImage.init(contentsOf:))
+    static let claude=Bundle.module.url(forResource:"claude",withExtension:"png").flatMap(NSImage.init(contentsOf:))
 }
 struct MacMark: View {
     var body: some View {
@@ -69,14 +70,15 @@ struct ProviderMark: View {
                 Image(nsImage:image).resizable().scaledToFit()
             } else { Text("C").font(.system(size:24,weight:.bold)).foregroundStyle(Color.retroPurple) }
         } else {
-            Image(systemName: "sparkle").resizable().scaledToFit().foregroundStyle(Color(red:0.78,green:0.34,blue:0.23)).padding(5)
+            if let image=RetroAssets.claude { Image(nsImage:image).resizable().scaledToFit() }
+            else { Text("C").font(.system(size:24,weight:.bold)).foregroundStyle(Color(red:0.78,green:0.34,blue:0.23)) }
         }
     }
 }
 struct StatusDot: View {
     let state: WokintoshCore.AgentState
     var connected = true
-    var tint: Color { if !connected { return .gray }; switch state { case .needsAttention: return Color(red:0.78,green:0.42,blue:0); case .working: return Color(red:0,green:0.5,blue:0.08); case .finished: return .retroPurple; case .idle, .unknown: return .gray } }
+    var tint: Color { if !connected && state != .blocked { return .gray }; switch state { case .needsAttention, .blocked: return Color(red:0.78,green:0.42,blue:0); case .working: return Color(red:0,green:0.5,blue:0.08); case .finished: return .retroPurple; case .idle, .unknown: return .gray } }
     var body: some View { Circle().fill(tint).overlay(Circle().stroke(.black.opacity(0.25),lineWidth:1)) }
 }
 import WokintoshCore
