@@ -4,6 +4,7 @@ import WokintoshCore
 struct AgentWidget: View {
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
+    var actionsEnabled=true
     var body: some View {
         GeometryReader { geometry in
             let t=store.document.textScale
@@ -53,31 +54,44 @@ struct AgentWidget: View {
     }
     @ViewBuilder func agentRow(_ row:SessionRow,wide:Bool,narrow:Bool,t:Double)->some View {
         HStack(spacing:wide ? 10 : 8) {
-            ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
-                .accessibilityLabel(row.session.provider == "codex" ? "Codex" : "Claude Code")
-            if wide {
-                Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1)
-                    .frame(maxWidth:.infinity,alignment:.leading)
-                    .accessibilityLabel(row.session.title)
-                Text(row.hostName+(row.session.isHelper || row.session.parentId != nil ? " · Helper" : ""))
-                    .font(retroFont(18*t,bold:false)).lineLimit(1).frame(width:104*t,alignment:.leading)
-                state(row,t:t,font:22).frame(width:156*t,alignment:.leading)
-            } else if narrow {
+            if narrow {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,accessibilityName:"Open app for \(row.session.title)") {
+                    ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
+                }
                 VStack(alignment:.leading,spacing:1) {
-                    Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).accessibilityLabel(row.session.title)
+                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider) {
+                        Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).accessibilityLabel(row.session.title).frame(maxWidth:.infinity,alignment:.leading)
+                    }
                     HStack(spacing:6) {
                         state(row,t:t,font:20)
                         Text(row.hostName).font(retroFont(18*t,bold:false)).lineLimit(1)
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
             } else {
-                VStack(alignment:.leading,spacing:0) {
-                    Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).accessibilityLabel(row.session.title)
-                    Text(metadata(row)).font(retroFont(18*t,bold:false)).lineLimit(1)
-                }.frame(maxWidth:.infinity,alignment:.leading)
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider) {
+                    HStack(spacing:wide ? 10 : 8) {
+                        ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
+                            .accessibilityLabel(row.session.provider == "codex" ? "Codex" : "Claude Code")
+                        if wide {
+                            Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading).accessibilityLabel(row.session.title)
+                            Text(row.hostName+(row.session.isHelper || row.session.parentId != nil ? " · Helper" : ""))
+                                .font(retroFont(18*t,bold:false)).lineLimit(1).frame(width:104*t,alignment:.leading)
+                        } else {
+                            VStack(alignment:.leading,spacing:0) {
+                                Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).accessibilityLabel(row.session.title)
+                                Text(metadata(row)).font(retroFont(18*t,bold:false)).lineLimit(1)
+                            }.frame(maxWidth:.infinity,alignment:.leading)
+                        }
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }
                 state(row,t:t,font:22).frame(width:156*t,alignment:.leading)
             }
         }.contextMenu {
+            if widget.action.kind != .none {
+                Button("Open Configured Action") {if actionsEnabled {store.activateWidget(widget.id,provider:row.session.provider)}}
+                    .disabled(!actionsEnabled || store.document.previewMode)
+                Divider()
+            }
             if store.isManuallyBlocked(row) {
                 Button("Clear Manual Blocked") { store.clearManualBlocked(row) }
             } else if row.session.state != .blocked {

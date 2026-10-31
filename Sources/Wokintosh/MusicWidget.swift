@@ -3,6 +3,8 @@ import WokintoshCore
 
 struct MusicWidget: View {
     @ObservedObject var store:DashboardStore
+    let widget:DashboardWidget
+    var actionsEnabled=true
     var body:some View {
         GeometryReader { geometry in
             let music=store.native.music
@@ -25,20 +27,24 @@ struct MusicWidget: View {
                 Group {
                     if stacked {
                         VStack(spacing:8) {
-                            artwork(preview:preview,url:music.artworkURL).frame(width:artSize,height:artSize)
+                            WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,accessibilityName:"Open Now Playing action") {artwork(preview:preview,url:music.artworkURL).frame(width:artSize,height:artSize)}
                             details(preview:preview,compact:compact,t:t,showArtist:showArtist,inlineControls:false,separateControls:separateControls,showProgress:showProgress)
                         }
                     } else {
                         HStack(spacing:spacing) {
-                            artwork(preview:preview,url:music.artworkURL).frame(width:artSize,height:artSize)
+                            WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,accessibilityName:"Open Now Playing action") {artwork(preview:preview,url:music.artworkURL).frame(width:artSize,height:artSize)}
                             details(preview:preview,compact:compact,t:t,showArtist:showArtist,inlineControls:inlineControls,separateControls:separateControls,showProgress:showProgress)
                         }
                     }
                 }.padding(padding).frame(maxWidth:.infinity,maxHeight:.infinity)
             } else {
                 VStack(alignment:.leading,spacing:10) {
-                    Text("Now Playing").font(retroFont(30*t))
-                    Text(music.status).font(retroFont(22*t,bold:false))
+                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
+                        VStack(alignment:.leading,spacing:10) {
+                            Text("Now Playing").font(retroFont(30*t))
+                            Text(music.status).font(retroFont(22*t,bold:false))
+                        }.frame(maxWidth:.infinity,alignment:.leading)
+                    }
                     if !store.native.musicEnabled { Button("Source settings…") { store.openSettings(.connections) }.buttonStyle(.bordered) }
                 }.padding(12).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
             }
@@ -53,15 +59,24 @@ struct MusicWidget: View {
         let title=preview ? "Blue Hour" : store.native.music.title
         let artist=preview ? "Paper Satellites" : store.native.music.artist
         return VStack(alignment:.leading,spacing:compact && separateControls && !inlineControls ? 1 : (compact ? 4 : 8)) {
-            Text(title).font(retroFont((compact ? 27 : 32)*t)).lineLimit(compact ? 1 : 2).help(title)
             if inlineControls {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
+                    Text(title).font(retroFont((compact ? 27 : 32)*t)).lineLimit(compact ? 1 : 2).help(title).frame(maxWidth:.infinity,alignment:.leading)
+                }
                 HStack(spacing:4) {
-                    Text(artist).font(retroFont(20*t,bold:false)).lineLimit(1).help(artist)
+                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
+                        Text(artist).font(retroFont(20*t,bold:false)).lineLimit(1).help(artist)
+                    }
                     Spacer(minLength:4)
                     playbackControls(preview:preview,t:t,compact:true)
                 }
-            } else if showArtist {
-                Text(artist).font(retroFont((compact ? 20 : 23)*t,bold:false)).lineLimit(1).help(artist)
+            } else {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
+                    VStack(alignment:.leading,spacing:compact && separateControls ? 1 : (compact ? 4 : 8)) {
+                        Text(title).font(retroFont((compact ? 27 : 32)*t)).lineLimit(compact ? 1 : 2).help(title)
+                        if showArtist {Text(artist).font(retroFont((compact ? 20 : 23)*t,bold:false)).lineLimit(1).help(artist)}
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }
             }
             if showProgress {
                 if !compact { Spacer(minLength:4) }

@@ -4,15 +4,16 @@ import WokintoshCore
 struct WidgetContent: View {
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
+    var editing=false
     var body: some View {
         Group {
             switch widget.kind {
-            case .agents: AgentWidget(store:store,widget:widget)
-            case .music: MusicWidget(store:store)
-            case .system: SystemWidget(store:store,widget:widget)
-            case .clock: ClockWidget(textScale:store.document.textScale)
-            case .weather: WeatherWidget(store:store,widget:widget)
-            case .calendar: CalendarWidget(store:store,widget:widget)
+            case .agents: AgentWidget(store:store,widget:widget,actionsEnabled:!editing)
+            case .music: MusicWidget(store:store,widget:widget,actionsEnabled:!editing)
+            case .system: WidgetActionArea(store:store,widget:widget,enabled:!editing) {SystemWidget(store:store,widget:widget).frame(maxWidth:.infinity,maxHeight:.infinity)}
+            case .clock: WidgetActionArea(store:store,widget:widget,enabled:!editing) {ClockWidget(textScale:store.document.textScale).frame(maxWidth:.infinity,maxHeight:.infinity)}
+            case .weather: WeatherWidget(store:store,widget:widget,actionsEnabled:!editing)
+            case .calendar: CalendarWidget(store:store,widget:widget,actionsEnabled:!editing)
             }
         }.clipped()
     }
@@ -40,6 +41,7 @@ struct ClockWidget:View {
 struct WeatherWidget:View {
     @ObservedObject var store:DashboardStore
     let widget:DashboardWidget
+    var actionsEnabled=true
     var body:some View {
         GeometryReader { g in
             let info=store.native.weather(for:widget)
@@ -48,6 +50,7 @@ struct WeatherWidget:View {
             let t=store.document.textScale
             let compact=g.size.height/t < 90
             if let temp {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
                 HStack(spacing:12) {
                     Image(systemName:preview ? "cloud.sun.fill" : info.symbol).symbolRenderingMode(.palette).foregroundStyle(.gray,.yellow).font(.system(size:compact ? min(36,g.size.height-18) : min(58,(g.size.height-16)*0.65)))
                     if compact {
@@ -61,11 +64,16 @@ struct WeatherWidget:View {
                         }
                     }
                 }.padding(8).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
+                }
                 if !preview && info.status != "Open-Meteo" {Text("Offline").font(retroFont(16)).foregroundStyle(.orange).padding(5).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topTrailing).help(info.status)}
             } else {
                 VStack(alignment:.leading,spacing:5) {
-                    if g.size.height>100 {Text("Weather").font(retroFont(27*t))}
-                    Text(info.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>110 ? 2 : 1)
+                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
+                        VStack(alignment:.leading,spacing:5) {
+                            if g.size.height>100 {Text("Weather").font(retroFont(27*t))}
+                            Text(info.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>110 ? 2 : 1)
+                        }.frame(maxWidth:.infinity,alignment:.leading)
+                    }
                     if g.size.height>90 {Button("Configure Weather…"){store.configure(widget.id)}.buttonStyle(.bordered).accessibilityLabel("Configure this Weather widget")}
                 }.padding(9).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
             }

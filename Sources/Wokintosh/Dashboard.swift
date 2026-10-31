@@ -31,6 +31,7 @@ struct DashboardCanvas: View {
             }
             .frame(width:1280,height:720)
             .background(Color.retroDesktop)
+            .overlay { DashboardMenu {store.openSettings(.widgets)} }
             .scaleEffect(scale,anchor:.topLeading)
             .frame(width:1280*scale,height:720*scale,alignment:.topLeading)
             .position(x:geometry.size.width/2,y:geometry.size.height/2)
@@ -39,7 +40,7 @@ struct DashboardCanvas: View {
     }
     var menuBar: some View {
         HStack(spacing: 12) {
-            DashboardMenu {store.openSettings(.widgets)}.frame(width:25,height:25)
+            Color.clear.frame(width:25,height:25)
             Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
@@ -75,7 +76,7 @@ struct PlacedWidget: View {
                     onClose:editing ? { store.remove(widget.id) } : nil,
                     onSelect:editing ? { store.configure(widget.id) } : nil,
                     onMove:editing ? { translation,ended in interact(translation,ended:ended,resizing:false) } : nil) {
-            WidgetContent(store:store,widget:widget)
+            WidgetContent(store:store,widget:widget,editing:editing)
         }
         .overlay(alignment:.bottomTrailing) {
             if editing {

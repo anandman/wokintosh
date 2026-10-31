@@ -28,11 +28,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var saveTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var nativeSubscription: AnyCancellable?
+    private let actionExecutor:WidgetActionExecutor
+    private var actionInFlight=Set<UUID>()
     var showEditor: (() -> Void)?
     var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
 
-    init() {
+    init(actionExecutor:WidgetActionExecutor?=nil) {
+        self.actionExecutor=actionExecutor ?? WidgetActionExecutor()
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "--data-dir"), arguments.indices.contains(index + 1) {
             dataDirectory = URL(fileURLWithPath: arguments[index + 1], isDirectory: true)
@@ -117,6 +120,24 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     func configure(_ id:UUID) { selectedID=id;openSettings(.widgets) }
     func openSettings(_ tab:SettingsTab) { settingsTab=tab;showSettings?();Task { await native.refreshConnectionStatus() } }
+    func activateWidget(_ id:UUID,provider:String?=nil) {
+        guard !document.previewMode else {return}
+        testWidgetAction(id,provider:provider)
+    }
+    /// Also used by the explicit Test action button in the widget inspector.
+    func testWidgetAction(_ id:UUID,provider:String?=nil) {
+        guard let widget=document.widgets.first(where:{$0.id==id}),!actionInFlight.contains(id) else {return}
+        do {
+            guard let target=try widget.action.target(provider:provider) else {return}
+            actionInFlight.insert(id)
+            Task { [weak self] in
+                guard let self else {return}
+                defer {self.actionInFlight.remove(id)}
+                do {try await self.actionExecutor.open(target)}
+                catch {self.presentMessage?(AppMessage(title:"Could Not Open Widget Action",message:error.localizedDescription,isError:true))}
+            }
+        } catch {presentMessage?(AppMessage(title:"Could Not Open Widget Action",message:error.localizedDescription,isError:true))}
+    }
     func remove(_ id:UUID) { document.widgets.removeAll { $0.id == id };if selectedID == id { selectedID=document.widgets.first?.id } }
     func removeSelected() { if let selectedID { remove(selectedID) } }
     func duplicate(_ id:UUID) {
