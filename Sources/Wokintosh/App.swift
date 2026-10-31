@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @main struct WokintoshMain {
@@ -6,7 +7,7 @@ import SwiftUI
         let application=NSApplication.shared
         let delegate=AppDelegate()
         application.delegate=delegate
-        application.setActivationPolicy(.regular)
+        application.setActivationPolicy(delegate.store.document.showDockIcon ? .regular : .accessory)
         application.run()
         withExtendedLifetime(delegate) {}
     }
@@ -23,8 +24,10 @@ import SwiftUI
     private var exitRequested=false
     private var preservePreference=false
     private var screenObserver:NSObjectProtocol?
+    private var dockPreferenceSubscription:AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenu()
+        observeDockPreference()
         store.showEditor = { [weak self] in self?.openEditor() }
         store.showSettings = { [weak self] in self?.openSettings() }
         store.presentMessage = { [weak self] message in self?.enqueueMessage(message) }
@@ -44,6 +47,18 @@ import SwiftUI
         store.start()
         if ProcessInfo.processInfo.arguments.contains("--editor") { openEditor() } else { restorePresentationIfPossible() }
         screenObserver=NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main) { [weak self] _ in Task { @MainActor in self?.restorePresentationIfPossible() } }
+    }
+    func observeDockPreference() {
+        dockPreferenceSubscription = store.$document.map(\.showDockIcon).removeDuplicates().sink { [weak self] visible in
+            self?.applyDockVisibility(visible)
+        }
+    }
+    private func applyDockVisibility(_ visible:Bool) {
+        let policy:NSApplication.ActivationPolicy = visible ? .regular : .accessory
+        guard NSApp.activationPolicy() != policy else { return }
+        let wasActive=NSApp.isActive
+        NSApp.setActivationPolicy(policy)
+        if wasActive { NSApp.activate(ignoringOtherApps:true) }
     }
     func makeMenu() {
         let menu=NSMenu()

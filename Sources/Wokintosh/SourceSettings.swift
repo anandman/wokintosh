@@ -21,6 +21,15 @@ struct ConnectionsSettingsView: View {
                         }
                     ))
                 }
+                Toggle("Look up missing artwork in Apple’s catalog", isOn: Binding(
+                    get: { store.native.musicCatalogArtworkEnabled },
+                    set: { enabled in
+                        store.native.musicCatalogArtworkEnabled = enabled
+                        Task { await store.native.refresh(document: store.document) }
+                    }
+                ))
+                Text("When Music does not expose a cover, send the current title, artist and album to Apple to find a matching cover.")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button(store.native.musicConnectionKnown && !store.native.musicConnected ? "Connect Apple Music…" : "Refresh Access") {
                         refreshAccess { if store.native.musicConnectionKnown && !store.native.musicConnected { await store.native.connectMusic() } }
@@ -97,19 +106,19 @@ struct MachinesSettingsView: View {
             Section("Agent machines") {
                 Text("This Mac is collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust.")
                     .font(.caption).foregroundStyle(.secondary)
-                List {
-                    machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
-                    ForEach(store.document.remoteHosts) { host in
-                        VStack(alignment: .leading, spacing: 8) {
-                            machineRow(name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
-                            HStack {
-                                Button("Install / Update…") { pendingInstall = host }
-                                    .help("Upload the bundled collector to this machine’s saved path")
-                                Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
-                            }.disabled(working)
-                        }.padding(.vertical, 3)
-                    }
-                }.frame(height: 170).accessibilityLabel("Connected agent machines")
+                machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
+                ForEach(store.document.remoteHosts) { host in
+                    VStack(alignment: .leading, spacing: 8) {
+                        machineRow(name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
+                        HStack {
+                            Button("Install / Update…") { pendingInstall = host }
+                                .help("Upload the bundled collector to this machine’s saved path")
+                                .accessibilityLabel("Install or update \(host.name)")
+                            Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
+                                .accessibilityLabel("Remove \(host.name)")
+                        }.disabled(working)
+                    }.padding(.vertical, 3)
+                }
             }
             Section("Add a remote machine") {
                 TextField("Machine name", text: $machineName)

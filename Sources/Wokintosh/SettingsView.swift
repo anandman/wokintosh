@@ -13,8 +13,6 @@ struct SettingsView: View {
                 .tabItem { Label("Connections", systemImage: "link") }.tag(SettingsTab.connections)
             MachinesSettingsView(store: store)
                 .tabItem { Label("Machines", systemImage: "desktopcomputer") }.tag(SettingsTab.machines)
-            AppearanceSettingsView(store: store)
-                .tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
             DisplaySettingsView(store: store)
                 .tabItem { Label("Display", systemImage: "display") }.tag(SettingsTab.display)
         }
@@ -23,12 +21,12 @@ struct SettingsView: View {
     }
 }
 
-private struct AppearanceSettingsView: View {
+private struct DisplaySettingsView: View {
     @ObservedObject var store: DashboardStore
 
     var body: some View {
         Form {
-            Section("Dashboard") {
+            Section("Appearance") {
                 LabeledContent("Text size") {
                     HStack {
                         Slider(value: $store.document.textScale, in: 0.8...1.6, step: 0.05)
@@ -40,21 +38,12 @@ private struct AppearanceSettingsView: View {
                 Text("Sample data is fictional and labeled PREVIEW on the dashboard.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section {
-                Button("Open Dashboard…") { store.openSettings(.widgets) }
-                Text("Add widgets, arrange the dashboard, and configure each widget in Dashboard settings.")
+            Section("App") {
+                Toggle("Show Dock icon", isOn: $store.document.showDockIcon)
+                    .accessibilityIdentifier("showDockIcon")
+                Text("Open Dashboard & Settings from the Mac icon at the right of the dashboard menu bar, or press Command-comma while Wokintosh is active.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }
-        .formStyle(.grouped)
-    }
-}
-
-private struct DisplaySettingsView: View {
-    @ObservedObject var store: DashboardStore
-
-    var body: some View {
-        Form {
             Section("Presentation") {
                 Picker("Display", selection: Binding<UInt32>(
                     get: { store.document.displayID ?? screenID(NSScreen.main) },

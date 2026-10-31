@@ -39,14 +39,14 @@ struct DashboardCanvas: View {
     }
     var menuBar: some View {
         HStack(spacing: 12) {
-            MacMark().frame(width:25,height:27)
+            ColorStripeMark().frame(width:25,height:25)
             Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
             if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) disconnected").font(barFont(16)).foregroundStyle(.orange) }
             Spacer()
             TimelineView(.periodic(from:.now,by:1)) { context in Text(context.date.formatted(date:.omitted,time:.shortened)).font(barFont(21)).monospacedDigit() }
-            Button { store.openSettings(.widgets) } label: { MacMark().frame(width:26,height:27) }.buttonStyle(.plain).help("Dashboard settings")
+            Button { store.openSettings(.widgets) } label: { MacMark().frame(width:26,height:27) }.buttonStyle(.plain).help("Dashboard & Settings").accessibilityLabel("Open Dashboard & Settings")
         }.padding(.horizontal,16).frame(maxWidth:.infinity,maxHeight:.infinity).background(Color(white:0.91)).foregroundStyle(.black)
             .overlay(alignment:.bottom) { Rectangle().fill(.black).frame(height:1.5) }
     }

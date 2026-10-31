@@ -82,3 +82,21 @@ struct StatusDot: View {
     var body: some View { Circle().fill(tint).overlay(Circle().stroke(.black.opacity(0.25),lineWidth:1)) }
 }
 import WokintoshCore
+
+/// A small striped square for the retro desktop's application menu mark.
+struct ColorStripeMark: View {
+    private let colors: [Color] = [Color(red: 0.20, green: 0.67, blue: 0.28),
+                                  Color(red: 1, green: 0.82, blue: 0.15),
+                                  Color(red: 1, green: 0.51, blue: 0.14),
+                                  Color(red: 0.89, green: 0.22, blue: 0.22),
+                                  Color(red: 0.48, green: 0.24, blue: 0.69),
+                                  Color(red: 0.78, green: 0.24, blue: 0.63),
+                                  Color(red: 0.19, green: 0.49, blue: 0.81)]
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(colors.indices, id: \.self) { index in colors[index] }
+        }
+        .overlay(Rectangle().strokeBorder(.black.opacity(0.7), lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+}
