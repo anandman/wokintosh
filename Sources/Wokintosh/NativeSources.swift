@@ -2,47 +2,102 @@ import AppKit
 import Carbon
 import Combine
 import EventKit
+import ImageIO
 import WokintoshCore
 
 /// Permission requests are confined to explicit Connect / Enable actions.
 @MainActor final class NativeSources: ObservableObject {
     @Published var music = NowPlayingInfo()
-    @Published var weather = WeatherInfo()
+    @Published private var weatherState = WeatherWidgetState()
+    private var weatherWidgets: [Widget] = []
+    var weather: WeatherInfo { weatherWidgets.first.map { weather(for: $0) } ?? WeatherInfo() }
+    @Published private(set) var musicConnected = false
+    @Published private(set) var musicConnectionKnown = false
     @Published var calendar = CalendarInfo()
     @Published var musicEnabled: Bool {
-        didSet { defaults.set(musicEnabled, forKey: Self.musicOptInKey) }
+        didSet {
+            defaults.set(musicEnabled, forKey: Self.musicOptInKey)
+            musicConnectionRevision = UUID()
+            musicReadTask?.cancel()
+            if !musicEnabled { music=NowPlayingInfo(status:"Apple Music reading is off") }
+            else if !music.hasTrack { music.status="Waiting for Apple Music" }
+        }
+    }
+
+    @Published var musicCatalogArtworkEnabled: Bool {
+        didSet {
+            defaults.set(musicCatalogArtworkEnabled, forKey: Self.catalogArtworkKey)
+            musicConnectionRevision = UUID()
+            musicReadTask?.cancel()
+            // Discard a possibly catalog-supplied cover immediately when lookup is disabled.
+            music.artworkURL = nil
+            music.artworkStatus = ""
+        }
     }
 
     private static let musicOptInKey = "wokintosh.musicEnabled"
+    private static let catalogArtworkKey = "wokintosh.catalogArtworkEnabled"
     private let defaults: UserDefaults
     private let musicReader = MusicSource()
     private let calendarReader = CalendarSource()
     private let weatherReader = WeatherSource()
     private var musicRefreshing = false
+    private var musicReadTask: Task<NowPlayingInfo, Error>?
     private var calendarRefreshing = false
-    private var weatherRequestID = UUID()
-    private var pendingWeatherURL: URL?
+    private var musicConnectionRevision = UUID()
+    private var calendarConnectionRevision = UUID()
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         musicEnabled = defaults.bool(forKey: Self.musicOptInKey)
+        musicCatalogArtworkEnabled = defaults.object(forKey: Self.catalogArtworkKey) as? Bool ?? true
     }
 
     func refresh(document: DashboardDocument) async {
         let kinds = Set(document.widgets.map(\.kind))
+        // Snapshot choices before the first suspension, so later document edits can invalidate them.
+        weatherWidgets = document.widgets.filter { $0.kind == .weather }
+        let requests = weatherState.synchronize(widgets: document.widgets)
         async let musicUpdate: Void = refreshMusicIfVisible(kinds.contains(.music))
         async let calendarUpdate: Void = refreshCalendarIfVisible(kinds.contains(.calendar))
-        async let weatherUpdate: Void = refreshWeather(document: document, visible: kinds.contains(.weather))
+        async let weatherUpdate: Void = refreshWeather(requests: requests)
         _ = await (musicUpdate, calendarUpdate, weatherUpdate)
     }
 
     func connectMusic() async {
+        musicConnectionRevision = UUID()
         musicEnabled = true
         await updateMusic(allowPrompt: true)
     }
 
+    /// Preflight only: opening Settings must never request new permissions or require a visible widget.
+    func refreshConnectionStatus() async {
+        let musicRevision = musicConnectionRevision
+        let calendarRevision = calendarConnectionRevision
+        async let calendarInfo = calendarReader.read()
+        let permission = await musicReader.hasPermission()
+        if musicConnectionRevision == musicRevision {
+            musicConnectionKnown = permission != nil
+            if let permission {
+                musicConnected = permission
+                if permission && !musicEnabled { music=NowPlayingInfo(status:"Apple Music reading is off") }
+            }
+        }
+        let info = await calendarInfo
+        if calendarConnectionRevision == calendarRevision { calendar = info }
+    }
+
+    func weather(for widget: Widget) -> WeatherInfo { weatherState.weather(for: widget) }
+
+    /// Synchronous invalidation for document edits; fetching stays on the normal refresh path.
+    func updateWidgets(_ widgets: [Widget]) {
+        weatherWidgets = widgets.filter { $0.kind == .weather }
+        weatherState.setWidgets(widgets)
+    }
+
     func requestCalendarAccess() async {
         guard !calendarRefreshing else { return }
+        calendarConnectionRevision = UUID()
         calendarRefreshing = true
         defer { calendarRefreshing = false }
         calendar = await calendarReader.requestAccess()
@@ -51,11 +106,13 @@ import WokintoshCore
     func performPlayback(_ action: String) async {
         guard ["playpause", "next", "previous"].contains(action) else { return }
         guard musicIsRunning else {
+            musicConnectionKnown = false
             music = NowPlayingInfo(status: "Open Apple Music to use playback controls")
             return
         }
         do {
             // This user click authorizes the selected media action and any required consent prompt.
+            musicConnectionRevision = UUID()
             try await musicReader.playback(action)
             musicEnabled = true
             await updateMusic(allowPrompt: false)
@@ -80,20 +137,40 @@ import WokintoshCore
     private func updateMusic(allowPrompt: Bool) async {
         guard !musicRefreshing else { return }
         guard musicIsRunning else {
+            musicConnectionKnown = false
             music = NowPlayingInfo(status: "Open Apple Music to show Now Playing")
             return
         }
         musicRefreshing = true
-        defer { musicRefreshing = false }
+        let revision = musicConnectionRevision
+        let allowCatalogArtwork = musicCatalogArtworkEnabled
+        let readTask = Task { [musicReader] in
+            try await musicReader.read(allowPrompt: allowPrompt, allowCatalogArtwork: allowCatalogArtwork)
+        }
+        musicReadTask = readTask
+        defer { musicReadTask = nil; musicRefreshing = false }
         do {
-            let result = try await musicReader.read(allowPrompt: allowPrompt)
+            let result = try await readTask.value
+            guard revision == musicConnectionRevision, allowCatalogArtwork == musicCatalogArtworkEnabled else { return }
+            musicConnectionKnown = true
+            musicConnected = true
             guard musicEnabled else { return }
             music = result
+        } catch is CancellationError {
+            return
         } catch let error as MusicPermissionError {
-            // Expose Connect again if a new app identity needs consent or access was revoked.
-            musicEnabled = false
+            guard revision == musicConnectionRevision else { return }
+            // A stopped target cannot be preflighted; that is distinct from a denied grant.
+            if case .unavailable = error {
+                musicConnectionKnown = false
+            } else {
+                musicConnectionKnown = true
+                musicConnected = false
+                musicEnabled = false
+            }
             music = NowPlayingInfo(status: error.localizedDescription)
         } catch {
+            guard revision == musicConnectionRevision else { return }
             music = NowPlayingInfo(status: "Apple Music unavailable: \(error.localizedDescription)")
         }
     }
@@ -105,33 +182,16 @@ import WokintoshCore
         calendar = await calendarReader.read()
     }
 
-    private func refreshWeather(document: DashboardDocument, visible: Bool) async {
-        guard visible else {
-            weatherRequestID = UUID()
-            pendingWeatherURL = nil
-            return
-        }
-        guard let latitude = document.latitude, let longitude = document.longitude else {
-            weatherRequestID = UUID()
-            pendingWeatherURL = nil
-            weather = WeatherInfo(place: document.weatherPlace)
-            return
-        }
-        do {
-            let url = try NativeSourceRequest.weatherURL(latitude: latitude, longitude: longitude, fahrenheit: document.fahrenheit)
-            guard pendingWeatherURL != url else { return }
-            let requestID = UUID()
-            weatherRequestID = requestID
-            pendingWeatherURL = url
-            defer { if weatherRequestID == requestID { pendingWeatherURL = nil } }
-            let place = document.weatherPlace.isEmpty ? String(format: "%.2f, %.2f", latitude, longitude) : document.weatherPlace
-            let result = await weatherReader.read(url: url, place: place)
-            guard weatherRequestID == requestID else { return }
-            weather = result
-        } catch {
-            weatherRequestID = UUID()
-            pendingWeatherURL = nil
-            weather = WeatherInfo(status: error.localizedDescription, place: document.weatherPlace)
+    private func refreshWeather(requests: [WeatherWidgetRequest]) async {
+        await withTaskGroup(of: (WeatherWidgetRequest, WeatherInfo).self) { group in
+            for request in requests {
+                group.addTask { [weatherReader] in
+                    (request, await weatherReader.read(url: request.url, place: ""))
+                }
+            }
+            for await (request, info) in group {
+                weatherState.complete(request, with: info)
+            }
         }
     }
 }
@@ -149,9 +209,26 @@ private enum MusicPermissionError: LocalizedError {
 
 /// Process execution, artwork I/O, and Apple Events consent preflight all run off the main actor.
 private actor MusicSource {
-    private var artworkCache: [String: URL] = [:]
-    private var artworkAttempts: [String: Date] = [:]
+    /// IDs are optional for streams; metadata also guards reused library IDs and catalog matches.
+    private struct ArtworkIdentity: Hashable {
+        var persistentID: String
+        var title: String
+        var artist: String
+        var album: String
+        var duration: Double
+        var arguments: [String] { [persistentID, title, artist, album, String(duration)] }
+        var catalogTrack: MusicArtworkTrack { .init(title: title, artist: artist, album: album, duration: duration) }
+    }
+    private struct ArtworkRequest: Hashable { var identity: ArtworkIdentity; var allowCatalog: Bool }
+    private struct ArtworkAttempt { var at: Date; var status: String; var retryAfter: TimeInterval }
+    private struct ArtworkCacheEntry { var url: URL; var fromCatalog: Bool }
+    private enum ArtworkResult { case available(URL, fromCatalog: Bool), missing, noCatalogMatch, changed }
+    private enum ArtworkError: Error { case incomplete, invalidImage, oversized, catalogUnavailable, catalogThrottled }
+    private var artworkCache: [ArtworkIdentity: ArtworkCacheEntry] = [:]
+    private var artworkAttempts: [ArtworkRequest: ArtworkAttempt] = [:]
     private var artworkDirectory: URL?
+    private let catalogHTTP = MusicArtworkHTTPClient()
+    private var nextCatalogRequest = Date.distantPast
 
     deinit {
         if let directory = artworkDirectory { try? FileManager.default.removeItem(at: directory) }
@@ -172,27 +249,74 @@ private actor MusicSource {
         }
     }
 
-    func read(allowPrompt: Bool) throws -> NowPlayingInfo {
+    func hasPermission() -> Bool? {
+        do { try checkPermission(allowPrompt: false); return true }
+        catch MusicPermissionError.unavailable { return nil }
+        catch { return false }
+    }
+
+    private func identity(from data: Data, info: NowPlayingInfo) throws -> ArtworkIdentity {
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return ArtworkIdentity(persistentID: object?["trackID"] as? String ?? "", title: info.title,
+                               artist: info.artist, album: info.album, duration: info.duration)
+    }
+
+    func read(allowPrompt: Bool, allowCatalogArtwork: Bool = false) async throws -> NowPlayingInfo {
+        try Task.checkCancellation()
         try checkPermission(allowPrompt: allowPrompt)
         let data = try CommandRunner.run("/usr/bin/osascript", arguments: ["-l", "JavaScript", "-e", Self.metadataScript], timeout: 4, maxBytes: 256 * 1024)
         var info = try NativeSourceParser.music(from: data)
         guard info.hasTrack else { return info }
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let persistentID = object?["trackID"] as? String ?? ""
-        // IDs remain separate from display text; external strings are always argv, never script source.
-        let key = persistentID.isEmpty ? [info.title, info.artist, info.album, String(info.duration)].joined(separator: "\u{0}") : persistentID
-        if let cached = artworkCache[key], FileManager.default.fileExists(atPath: cached.path) {
-            info.artworkURL = cached
-        } else if Date().timeIntervalSince(artworkAttempts[key] ?? .distantPast) >= 60 {
-            artworkAttempts[key] = Date()
-            info.artworkURL = try? fetchArtwork(trackID: persistentID)
-            if let artworkURL = info.artworkURL { artworkCache[key] = artworkURL }
-            if artworkCache.count > 12 {
-                let expired = artworkCache.filter { $0.key != key }
-                for (oldKey, url) in expired { try? FileManager.default.removeItem(at: url); artworkCache.removeValue(forKey: oldKey) }
+        let key = try identity(from: data, info: info)
+        let request = ArtworkRequest(identity: key, allowCatalog: allowCatalogArtwork)
+        if !allowCatalogArtwork {
+            for (oldKey, entry) in artworkCache where entry.fromCatalog {
+                try? FileManager.default.removeItem(at: entry.url)
+                artworkCache.removeValue(forKey: oldKey)
             }
-            if artworkAttempts.count > 100 { artworkAttempts = [key: Date()] }
         }
+        if let cached = artworkCache[key], FileManager.default.fileExists(atPath: cached.url.path) {
+            info.artworkURL = cached.url
+            return info
+        }
+        let now = Date()
+        if let attempt = artworkAttempts[request], now.timeIntervalSince(attempt.at) < attempt.retryAfter {
+            info.artworkStatus = attempt.status
+            return info
+        }
+        let status: String
+        let retryAfter: TimeInterval
+        do {
+            switch try await fetchArtwork(identity: key, allowCatalog: allowCatalogArtwork) {
+            case .available(let url, let fromCatalog):
+                info.artworkURL = url
+                artworkCache[key] = ArtworkCacheEntry(url: url, fromCatalog: fromCatalog)
+                status = ""
+                retryAfter = 0
+            case .missing:
+                status = "Music did not expose artwork for this track. Enable Apple catalog artwork in Connections to look for a matching cover."
+                retryAfter = 30
+            case .noCatalogMatch:
+                status = "Music did not expose artwork, and no exact Apple catalog match was found."
+                retryAfter = 60
+            case .changed:
+                status = "The track changed while artwork was loading."
+                retryAfter = 0
+            }
+        } catch {
+            try Task.checkCancellation()
+            status = Self.artworkErrorStatus(error)
+            if case ArtworkError.catalogThrottled = error { retryAfter = 3 } else { retryAfter = 30 }
+        }
+        info.artworkStatus = status
+        artworkAttempts[request] = ArtworkAttempt(at: now, status: status, retryAfter: retryAfter)
+        if artworkCache.count > 12 {
+            for (oldKey, entry) in artworkCache where oldKey != key {
+                try? FileManager.default.removeItem(at: entry.url)
+                artworkCache.removeValue(forKey: oldKey)
+            }
+        }
+        if artworkAttempts.count > 100 { artworkAttempts = [request: ArtworkAttempt(at: now, status: status, retryAfter: retryAfter)] }
         return info
     }
 
@@ -208,25 +332,80 @@ private actor MusicSource {
         _ = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", "tell application id \"com.apple.Music\" to \(command)"], timeout: 4, maxBytes: 32 * 1024)
     }
 
-    private func fetchArtwork(trackID: String) throws -> URL? {
-        // A stable Music ID lets the export reject a track change between metadata and artwork reads.
-        guard !trackID.isEmpty else { return nil }
+    private func fetchArtwork(identity: ArtworkIdentity, allowCatalog: Bool) async throws -> ArtworkResult {
         if artworkDirectory == nil {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("wokintosh-artwork-" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             artworkDirectory = directory
         }
-        guard let directory = artworkDirectory else { return nil }
+        guard let directory = artworkDirectory else { throw ArtworkError.incomplete }
         let rawURL = directory.appendingPathComponent(UUID().uuidString + ".raw")
         defer { try? FileManager.default.removeItem(at: rawURL) }
-        _ = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", Self.artworkScript, rawURL.path, trackID], timeout: 4, maxBytes: 32 * 1024)
-        let size = try rawURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size > 0, size <= 16 * 1024 * 1024 else { return nil }
-        guard let bitmap = NSBitmapImageRep(data: try Data(contentsOf: rawURL)),
-              let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        do {
+            let response = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", Self.artworkScript, rawURL.path] + identity.arguments,
+                                                 timeout: 4, maxBytes: 32 * 1024)
+            switch String(data: response, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            case "missing": break
+            case "changed": return .changed
+            case "exported":
+                let size = try rawURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0 else { throw ArtworkError.incomplete }
+                guard size <= 16 * 1024 * 1024 else { throw ArtworkError.oversized }
+                return .available(try cacheImage(Data(contentsOf: rawURL), directory: directory), fromCatalog: false)
+            default: throw ArtworkError.incomplete
+            }
+        } catch {
+            // A streaming item can expose an empty collection or fail artwork export while
+            // Music's own UI still has a cover. Catalog lookup is explicitly user controlled.
+            if !allowCatalog { throw error }
+        }
+        guard allowCatalog else { return .missing }
+        guard MusicArtworkCatalog.searchURL(for: identity.catalogTrack) != nil else { return .noCatalogMatch }
+        guard Date() >= nextCatalogRequest else { throw ArtworkError.catalogThrottled }
+        nextCatalogRequest = Date().addingTimeInterval(3) // At most 20 searches per minute, including rapid skips.
+        let lookup = MusicArtworkLookup { [catalogHTTP] url, limit in try await catalogHTTP.fetch(url, maxBytes: limit) }
+        let image: Data
+        do {
+            guard let found = try await lookup.artwork(for: identity.catalogTrack) else { return .noCatalogMatch }
+            image = found
+        } catch {
+            try Task.checkCancellation()
+            throw ArtworkError.catalogUnavailable
+        }
+        // Network results may arrive after a skip. Re-read actual Music metadata before caching.
+        try Task.checkCancellation()
+        let latestData = try CommandRunner.run("/usr/bin/osascript", arguments: ["-l", "JavaScript", "-e", Self.metadataScript], timeout: 4, maxBytes: 256 * 1024)
+        let latestInfo = try NativeSourceParser.music(from: latestData)
+        try Task.checkCancellation()
+        guard latestInfo.hasTrack, try self.identity(from: latestData, info: latestInfo) == identity else { return .changed }
+        return .available(try cacheImage(image, directory: directory), fromCatalog: true)
+    }
+
+    private func cacheImage(_ raw: Data, directory: URL) throws -> URL {
+        guard !raw.isEmpty, raw.count <= 16 * 1024 * 1024 else { throw ArtworkError.oversized }
+        guard let imageSource = CGImageSourceCreateWithData(raw as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+              width.doubleValue > 0, height.doubleValue > 0,
+              width.doubleValue * height.doubleValue <= 16 * 1024 * 1024 else { throw ArtworkError.invalidImage }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                       kCGImageSourceCreateThumbnailWithTransform: true,
+                                       kCGImageSourceThumbnailMaxPixelSize: 1024]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw ArtworkError.invalidImage }
         let url = directory.appendingPathComponent(UUID().uuidString + ".png")
         try png.write(to: url, options: .atomic)
         return url
+    }
+
+    private static func artworkErrorStatus(_ error: Error) -> String {
+        if case ArtworkError.catalogThrottled = error { return "Apple catalog artwork is waiting to retry." }
+        if case ArtworkError.catalogUnavailable = error { return "Apple catalog artwork is unavailable. Wokintosh will retry." }
+        if case RunnerError.timedOut = error { return "Artwork request timed out. Wokintosh will retry." }
+        if case ArtworkError.oversized = error { return "Apple Music artwork is too large to display." }
+        if case ArtworkError.invalidImage = error { return "Apple Music artwork could not be decoded." }
+        return "Artwork could not be read from Apple Music. Wokintosh will retry."
     }
 
     private static let metadataScript = #"""
@@ -245,15 +424,65 @@ private actor MusicSource {
     """#
 
     private static let artworkScript = #"""
+    on textValue(value)
+        if value is missing value then return ""
+        return value as text
+    end textValue
+
+    on matchesTrack(candidate, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration)
+        tell application id "com.apple.Music"
+            if expectedID is not "" then
+                try
+                    if (persistent ID of candidate as text) is not expectedID then return false
+                on error
+                    return false
+                end try
+            end if
+            set actualTitle to ""
+            set actualArtist to ""
+            set actualAlbum to ""
+            set actualDuration to 0
+            try
+                set actualTitle to my textValue(name of candidate)
+            end try
+            try
+                set actualArtist to my textValue(artist of candidate)
+            end try
+            try
+                set actualAlbum to my textValue(album of candidate)
+            end try
+            try
+                set durationValue to duration of candidate
+                if durationValue is not missing value then set actualDuration to durationValue
+            end try
+        end tell
+        considering case
+            if actualTitle is not expectedTitle or actualArtist is not expectedArtist or actualAlbum is not expectedAlbum then return false
+        end considering
+        if actualDuration < 0 then set actualDuration to 0
+        if actualDuration < expectedDuration - 0.01 or actualDuration > expectedDuration + 0.01 then return false
+        return true
+    end matchesTrack
+
     on run argv
         set outputPath to item 1 of argv
         set expectedID to item 2 of argv
+        set expectedTitle to item 3 of argv
+        set expectedArtist to item 4 of argv
+        set expectedAlbum to item 5 of argv
+        set expectedDuration to (item 6 of argv) as real
         tell application id "com.apple.Music"
-            if player state is stopped then return ""
-            if persistent ID of current track is not expectedID then return ""
-            if (count artworks of current track) is 0 then return ""
-            set imageBytes to raw data of artwork 1 of current track
+            if player state is stopped then return "changed"
+            set currentSong to current track
         end tell
+        if not my matchesTrack(currentSong, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration) then return "changed"
+        tell application id "com.apple.Music"
+            if (count artworks of currentSong) is 0 then return "missing"
+            set imageBytes to raw data of artwork 1 of currentSong
+            if player state is stopped then return "changed"
+            set latestSong to current track
+        end tell
+        if not my matchesTrack(latestSong, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration) then return "changed"
         set outputFile to open for access POSIX file outputPath with write permission
         try
             set eof outputFile to 0
@@ -265,7 +494,7 @@ private actor MusicSource {
             end try
             error messageText number errorNumber
         end try
-        return ""
+        return "exported"
     end run
     """#
 }
@@ -274,13 +503,32 @@ private actor CalendarSource {
     private let store = EKEventStore()
     private var cached: CalendarInfo?
     private var fetchedAt = Date.distantPast
+    private var changeObserver: NSObjectProtocol?
+
+    deinit {
+        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
+    }
+
+    private func observeStoreChangesIfNeeded() {
+        guard changeObserver == nil else { return }
+        // The callback transfers only this actor reference, never EventKit objects or the notification.
+        changeObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: nil) { [weak self] _ in
+            Task { await self?.invalidateCache() }
+        }
+    }
+
+    private func invalidateCache() {
+        cached = nil
+        fetchedAt = .distantPast
+    }
 
     func requestAccess() async -> CalendarInfo {
         do {
             guard try await store.requestFullAccessToEvents() else {
                 return CalendarInfo(status: "Calendar access denied. Enable it in System Settings → Privacy & Security → Calendars")
             }
-            fetchedAt = .distantPast
+            // Explicit Enable refreshes inventory even when no Calendar widget is visible.
+            invalidateCache()
             return read()
         } catch {
             return CalendarInfo(status: "Calendar access unavailable: \(error.localizedDescription)")
@@ -296,18 +544,27 @@ private actor CalendarSource {
         case .writeOnly: return CalendarInfo(status: "Enable full Calendar access to read upcoming events")
         @unknown default: return CalendarInfo(status: "Calendar access unavailable")
         }
+        observeStoreChangesIfNeeded()
         let now = Date()
         if let cached, now.timeIntervalSince(fetchedAt) < 60 { return cached }
+        let calendars = store.calendars(for: .event).map { calendar in
+            CalendarDescriptor(id: calendar.calendarIdentifier, title: calendar.title, sourceTitle: calendar.source.title)
+        }.sorted { first, second in
+            if first.sourceTitle != second.sourceTitle { return first.sourceTitle < second.sourceTitle }
+            if first.title != second.title { return first.title < second.title }
+            return first.id < second.id
+        }
         let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 86400)
         let predicate = store.predicateForEvents(withStart: now, end: end, calendars: nil)
         let events = store.events(matching: predicate)
             .filter { $0.endDate > now && $0.status != .canceled }
             .sorted { $0.startDate == $1.startDate ? ($0.title ?? "") < ($1.title ?? "") : $0.startDate < $1.startDate }
-            .prefix(12)
             .map { event in CalendarEntry(id: "\(event.eventIdentifier ?? event.calendarItemIdentifier):\(event.startDate.timeIntervalSince1970)",
                                          title: event.title?.isEmpty == false ? event.title : "Untitled event",
-                                         startDate: event.startDate, endDate: event.endDate, isAllDay: event.isAllDay) }
-        let result = CalendarInfo(events: Array(events), status: events.isEmpty ? "No events in the next 7 days" : "Upcoming · next 7 days", authorized: true)
+                                         startDate: event.startDate, endDate: event.endDate, isAllDay: event.isAllDay,
+                                         calendarID: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title) }
+        // Keep every candidate in this bounded seven-day window; widgets filter before applying their own limits.
+        let result = CalendarInfo(events: events, status: events.isEmpty ? "No events in the next 7 days" : "Upcoming · next 7 days", authorized: true, calendars: calendars)
         cached = result
         fetchedAt = now
         return result
@@ -318,6 +575,7 @@ private actor WeatherSource {
     private struct CacheEntry { var info: WeatherInfo; var fetchedAt: Date }
     private var cache: [URL: CacheEntry] = [:]
     private var failures: [URL: Date] = [:]
+    private var inFlight: [URL: Task<WeatherInfo, Never>] = [:]
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 12
@@ -327,6 +585,24 @@ private actor WeatherSource {
     }()
 
     func read(url: URL, place: String) async -> WeatherInfo {
+        let task: Task<WeatherInfo, Never>
+        let ownsRequest: Bool
+        if let pending = inFlight[url] {
+            task = pending
+            ownsRequest = false
+        } else {
+            task = Task { await self.readUnshared(url: url) }
+            inFlight[url] = task
+            ownsRequest = true
+        }
+        var info = await task.value
+        if ownsRequest { inFlight.removeValue(forKey: url) }
+        info.place = place
+        return info
+    }
+
+    private func readUnshared(url: URL) async -> WeatherInfo {
+        let place = ""
         let now = Date()
         if let cached = cache[url], now.timeIntervalSince(cached.fetchedAt) < 600 {
             var info = cached.info
