@@ -83,20 +83,21 @@ struct StatusDot: View {
 }
 import WokintoshCore
 
-/// A small striped square for the retro desktop's application menu mark.
-struct ColorStripeMark: View {
-    private let colors: [Color] = [Color(red: 0.20, green: 0.67, blue: 0.28),
-                                  Color(red: 1, green: 0.82, blue: 0.15),
-                                  Color(red: 1, green: 0.51, blue: 0.14),
-                                  Color(red: 0.89, green: 0.22, blue: 0.22),
-                                  Color(red: 0.48, green: 0.24, blue: 0.69),
-                                  Color(red: 0.78, green: 0.24, blue: 0.63),
-                                  Color(red: 0.19, green: 0.49, blue: 0.81)]
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(colors.indices, id: \.self) { index in colors[index] }
+/// A cached image also works as a native pull-down menu label on macOS.
+enum ColorStripeMark {
+    static let image=NSImage(size:NSSize(width:25,height:25),flipped:true) { rect in
+        let colors:[NSColor]=[NSColor(red:0.20,green:0.67,blue:0.28,alpha:1),
+                              NSColor(red:1,green:0.82,blue:0.15,alpha:1),
+                              NSColor(red:1,green:0.51,blue:0.14,alpha:1),
+                              NSColor(red:0.89,green:0.22,blue:0.22,alpha:1),
+                              NSColor(red:0.67,green:0.12,blue:0.69,alpha:1),
+                              NSColor(red:0,green:0.62,blue:0.80,alpha:1)]
+        for index in colors.indices {
+            colors[index].setFill()
+            NSBezierPath(rect:NSRect(x:rect.minX,y:rect.minY+Double(index)*rect.height/6,width:rect.width,height:rect.height/6+0.3)).fill()
         }
-        .overlay(Rectangle().strokeBorder(.black.opacity(0.7), lineWidth: 1))
-        .accessibilityHidden(true)
+        NSColor.black.withAlphaComponent(0.7).setStroke()
+        let border=NSBezierPath(rect:rect.insetBy(dx:0.5,dy:0.5));border.lineWidth=1;border.stroke()
+        return true
     }
 }
