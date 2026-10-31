@@ -27,9 +27,10 @@ public struct Widget: Codable, Equatable, Identifiable, Sendable {
     public var hostID: String?; public var provider: String?; public var showFinished: Bool; public var showHelpers: Bool
     public var systemOptions=SystemWidgetOptions()
     public var calendarOptions=CalendarSelectionOptions()
+    public var weatherOptions=WeatherWidgetOptions()
     public init(kind: WidgetKind, frame: WidgetFrame) { self.id=UUID(); self.kind=kind; self.frame=frame; self.showFinished=false; self.showHelpers=false }
 
-    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions }
+    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions,weatherOptions }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(UUID.self,forKey:.id);kind=try c.decode(WidgetKind.self,forKey:.kind);frame=try c.decode(WidgetFrame.self,forKey:.frame)
@@ -37,6 +38,7 @@ public struct Widget: Codable, Equatable, Identifiable, Sendable {
         showFinished=try c.decodeIfPresent(Bool.self,forKey:.showFinished) ?? false;showHelpers=try c.decodeIfPresent(Bool.self,forKey:.showHelpers) ?? false
         systemOptions=try c.decodeIfPresent(SystemWidgetOptions.self,forKey:.systemOptions) ?? SystemWidgetOptions()
         calendarOptions=try c.decodeIfPresent(CalendarSelectionOptions.self,forKey:.calendarOptions) ?? CalendarSelectionOptions()
+        weatherOptions=try c.decodeIfPresent(WeatherWidgetOptions.self,forKey:.weatherOptions) ?? WeatherWidgetOptions()
     }
 }
 public struct RemoteHost: Codable, Equatable, Identifiable, Sendable {
@@ -66,6 +68,13 @@ public struct DashboardDocument: Codable, Equatable, Sendable {
         latitude=try values.decodeIfPresent(Double.self,forKey:.latitude)
         longitude=try values.decodeIfPresent(Double.self,forKey:.longitude)
         fahrenheit=try values.decodeIfPresent(Bool.self,forKey:.fahrenheit) ?? false
+        // Older layouts stored one shared choice. Presence of the widget key marks migration,
+        // including an explicitly empty choice, so later-added widgets never inherit it.
+        struct WeatherMigration: Decodable { var weatherOptions: WeatherWidgetOptions? }
+        let migrations=try values.decode([WeatherMigration].self,forKey:.widgets)
+        for index in widgets.indices where widgets[index].kind == .weather && migrations[index].weatherOptions == nil {
+            widgets[index].weatherOptions=WeatherWidgetOptions(place:weatherPlace,latitude:latitude,longitude:longitude,fahrenheit:fahrenheit)
+        }
         displayID=try values.decodeIfPresent(UInt32.self,forKey:.displayID)
         presentationEnabled=try values.decodeIfPresent(Bool.self,forKey:.presentationEnabled) ?? false
         previewMode=try values.decodeIfPresent(Bool.self,forKey:.previewMode) ?? false

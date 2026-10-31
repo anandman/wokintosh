@@ -6,8 +6,18 @@ public enum AgentState: String, Codable, CaseIterable, Sendable {
 public struct AgentSession: Codable, Equatable, Sendable {
     public var id: String; public var provider: String; public var title: String; public var project: String
     public var state: AgentState; public var updatedAt: Date; public var activity: String?; public var parentId: String?
-    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil) {
-        self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId
+    public var isHelper: Bool
+    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false) {
+        self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId; self.isHelper=isHelper || parentId != nil
+    }
+    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper }
+    public init(from decoder: Decoder) throws {
+        let c=try decoder.container(keyedBy:CodingKeys.self)
+        id=try c.decode(String.self,forKey:.id);provider=try c.decode(String.self,forKey:.provider)
+        title=try c.decode(String.self,forKey:.title);project=try c.decode(String.self,forKey:.project)
+        state=try c.decode(AgentState.self,forKey:.state);updatedAt=try c.decode(Date.self,forKey:.updatedAt)
+        activity=try c.decodeIfPresent(String.self,forKey:.activity);parentId=try c.decodeIfPresent(String.self,forKey:.parentId)
+        isHelper=(try c.decodeIfPresent(Bool.self,forKey:.isHelper) ?? false) || parentId != nil
     }
 }
 public struct HostInfo: Codable, Equatable, Sendable { public var id: String; public var name: String; public var platform: String }
