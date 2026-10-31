@@ -95,8 +95,41 @@ public enum RemoteInstall {
     }
 
     private static let probeCommand: String = {
-        let script = "import json,os,sys; sys.exit(2) if sys.version_info < (3,10) else None; print(json.dumps({'home':os.path.expanduser('~'),'python':sys.executable,'version':list(sys.version_info[:3])}))"
-        let shell = "for p in python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do if \"$p\" -c " + RemoteCommand.shellQuote(script) + " 2>/dev/null; then exit 0; fi; done; printf '%s\\n' 'Python 3.10 or later is required on the remote machine. Install Python, then retry.' >&2; exit 1"
+        let script = "import json,os,sys; sys.exit(2) if sys.version_info < (3,10) or not sys.executable or not os.path.isabs(sys.executable) or len(sys.executable)>4096 or any(c.isspace() for c in sys.executable) else None; print(json.dumps({'home':os.path.expanduser('~'),'python':sys.executable,'version':list(sys.version_info[:3])}))"
+        let shell = """
+        search_directory() {
+            case "$1" in /*) ;; *) return ;; esac
+            for p in "$1"/python3 "$1"/python3.[0-9]*; do
+                [ -f "$p" ] && [ -x "$p" ] || continue
+                name=${p##*/}
+                case "$name" in
+                    python3) ;;
+                    python3.*)
+                        minor=${name#python3.}
+                        case "$minor" in ''|*[!0-9]*) continue ;; esac
+                        ;;
+                    *) continue ;;
+                esac
+                if "$p" -c \(RemoteCommand.shellQuote(script)) 2>/dev/null; then exit 0; fi
+            done
+        }
+        if python3 -c \(RemoteCommand.shellQuote(script)) 2>/dev/null; then exit 0; fi
+        remaining=${PATH:-}
+        while [ -n "$remaining" ]; do
+            case "$remaining" in
+                *:*) directory=${remaining%%:*}; remaining=${remaining#*:} ;;
+                *) directory=$remaining; remaining= ;;
+            esac
+            search_directory "$directory"
+        done
+        for directory in /opt/homebrew/bin /usr/local/bin /usr/bin \\
+                         /opt/homebrew/opt/python@3.*/bin /usr/local/opt/python@3.*/bin \\
+                         /Library/Frameworks/Python.framework/Versions/3.*/bin; do
+            search_directory "$directory"
+        done
+        printf '%s\\n' 'Wokintosh could not find Python 3.10 or later in the SSH PATH or common Python installation locations.' >&2
+        exit 1
+        """
         return "sh -c " + RemoteCommand.shellQuote(shell)
     }()
 

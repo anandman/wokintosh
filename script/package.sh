@@ -12,7 +12,7 @@ chmod +x "$PACKAGE_ROOT/wokintosh-agent"
 cp "$ROOT_DIR/README.md" "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$PACKAGE_ROOT/"
 xattr -cr "$PACKAGE_ROOT"
 codesign --verify --deep --strict "$PACKAGE_ROOT/Wokintosh.app"
-ARCHIVE="$ROOT_DIR/dist/Wokintosh-0.8.0-macOS-arm64.zip"
+ARCHIVE="$ROOT_DIR/dist/Wokintosh-0.8.1-macOS-arm64.zip"
 ditto -c -k --norsrc --keepParent "$PACKAGE_ROOT" "$ARCHIVE"
 (cd "$ROOT_DIR/dist" && shasum -a 256 "$(basename "$ARCHIVE")" > "$(basename "$ARCHIVE").sha256")
 printf 'Packaged %s\n' "$ARCHIVE"
