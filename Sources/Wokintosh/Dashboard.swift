@@ -39,7 +39,7 @@ struct DashboardCanvas: View {
     }
     var menuBar: some View {
         HStack(spacing: 12) {
-            ColorStripeMark().frame(width:25,height:25)
+            DashboardMenu {store.openSettings(.widgets)}.frame(width:25,height:25)
             Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
