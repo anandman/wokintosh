@@ -15,10 +15,10 @@ struct DashboardCanvas: View {
                         Color.retroDesktop
                         if editing && store.document.snapToGrid {
                             Canvas { context, size in
-                                for x in stride(from:0.0,through:size.width,by:16) {
+                                for x in stride(from:0.0,through:size.width,by:DashboardGrid.step) {
                                     var p=Path();p.move(to:CGPoint(x:x,y:0));p.addLine(to:CGPoint(x:x,y:size.height));context.stroke(p,with:.color(.white.opacity(0.10)),lineWidth:0.6)
                                 }
-                                for y in stride(from:0.0,through:size.height,by:16) {
+                                for y in stride(from:0.0,through:size.height,by:DashboardGrid.step) {
                                     var p=Path();p.move(to:CGPoint(x:0,y:y));p.addLine(to:CGPoint(x:size.width,y:y));context.stroke(p,with:.color(.white.opacity(0.10)),lineWidth:0.6)
                                 }
                             }.allowsHitTesting(false)
@@ -35,11 +35,12 @@ struct DashboardCanvas: View {
             .frame(width:1280*scale,height:720*scale,alignment:.topLeading)
             .position(x:geometry.size.width/2,y:geometry.size.height/2)
         }.background(Color.black.opacity(0.88))
+            .environment(\.colorScheme,.light)
     }
     var menuBar: some View {
         HStack(spacing: 12) {
             MacMark().frame(width:25,height:27)
-            Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Open Layout Editor")
+            Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
             if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) disconnected").font(barFont(16)).foregroundStyle(.orange) }
@@ -94,7 +95,7 @@ struct PlacedWidget: View {
             else {
                 Button("Configure…") { store.configure(widget.id) }
                 if widget.kind == .agents { Button("Mark all Done as reviewed") { store.reviewAllCompletions(for:widget) }.disabled(!store.rows(for:widget).contains(where: \.completionPending)) }
-                Button("Edit Layout…") { store.showEditor?() }
+                Button("Edit Dashboard…") { store.showEditor?() }
             }
         }
     }

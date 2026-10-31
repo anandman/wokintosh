@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import Combine
 import EventKit
+import ImageIO
 import WokintoshCore
 
 /// Permission requests are confined to explicit Connect / Enable actions.
@@ -181,8 +182,24 @@ private enum MusicPermissionError: LocalizedError {
 
 /// Process execution, artwork I/O, and Apple Events consent preflight all run off the main actor.
 private actor MusicSource {
-    private var artworkCache: [String: URL] = [:]
-    private var artworkAttempts: [String: Date] = [:]
+    /// Display metadata is included even with an ID: streamed tracks can reuse an underlying item.
+    private struct ArtworkIdentity: Hashable {
+        var persistentID: String
+        var title: String
+        var artist: String
+        var album: String
+        var duration: Double
+        var arguments: [String] { [persistentID, title, artist, album, String(duration)] }
+    }
+    private struct ArtworkAttempt {
+        var at: Date
+        var status: String
+        var retryAfter: TimeInterval
+    }
+    private enum ArtworkResult { case available(URL), missing, changed }
+    private enum ArtworkError: Error { case incomplete, invalidImage, oversized }
+    private var artworkCache: [ArtworkIdentity: URL] = [:]
+    private var artworkAttempts: [ArtworkIdentity: ArtworkAttempt] = [:]
     private var artworkDirectory: URL?
 
     deinit {
@@ -216,20 +233,43 @@ private actor MusicSource {
         var info = try NativeSourceParser.music(from: data)
         guard info.hasTrack else { return info }
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let persistentID = object?["trackID"] as? String ?? ""
-        // IDs remain separate from display text; external strings are always argv, never script source.
-        let key = persistentID.isEmpty ? [info.title, info.artist, info.album, String(info.duration)].joined(separator: "\u{0}") : persistentID
+        let key = ArtworkIdentity(persistentID: object?["trackID"] as? String ?? "", title: info.title,
+                                  artist: info.artist, album: info.album, duration: info.duration)
         if let cached = artworkCache[key], FileManager.default.fileExists(atPath: cached.path) {
             info.artworkURL = cached
-        } else if Date().timeIntervalSince(artworkAttempts[key] ?? .distantPast) >= 60 {
-            artworkAttempts[key] = Date()
-            info.artworkURL = try? fetchArtwork(trackID: persistentID)
-            if let artworkURL = info.artworkURL { artworkCache[key] = artworkURL }
-            if artworkCache.count > 12 {
-                let expired = artworkCache.filter { $0.key != key }
-                for (oldKey, url) in expired { try? FileManager.default.removeItem(at: url); artworkCache.removeValue(forKey: oldKey) }
+        } else {
+            let now = Date()
+            if let attempt = artworkAttempts[key], now.timeIntervalSince(attempt.at) < attempt.retryAfter {
+                info.artworkStatus = attempt.status
+            } else {
+                let status: String
+                let retryAfter: TimeInterval
+                do {
+                    switch try fetchArtwork(identity: key) {
+                    case .available(let url):
+                        info.artworkURL = url
+                        artworkCache[key] = url
+                        status = ""
+                        retryAfter = 0 // The file itself is the cache; a deleted file can be exported again.
+                    case .missing:
+                        status = "Apple Music has no artwork available for this track."
+                        retryAfter = 30
+                    case .changed:
+                        status = "The track changed while artwork was loading."
+                        retryAfter = 0
+                    }
+                } catch {
+                    status = Self.artworkErrorStatus(error)
+                    retryAfter = 15
+                }
+                info.artworkStatus = status
+                artworkAttempts[key] = ArtworkAttempt(at: now, status: status, retryAfter: retryAfter)
+                if artworkCache.count > 12 {
+                    let expired = artworkCache.filter { $0.key != key }
+                    for (oldKey, url) in expired { try? FileManager.default.removeItem(at: url); artworkCache.removeValue(forKey: oldKey) }
+                }
+                if artworkAttempts.count > 100 { artworkAttempts = [key: ArtworkAttempt(at: now, status: status, retryAfter: retryAfter)] }
             }
-            if artworkAttempts.count > 100 { artworkAttempts = [key: Date()] }
         }
         return info
     }
@@ -246,25 +286,52 @@ private actor MusicSource {
         _ = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", "tell application id \"com.apple.Music\" to \(command)"], timeout: 4, maxBytes: 32 * 1024)
     }
 
-    private func fetchArtwork(trackID: String) throws -> URL? {
-        // A stable Music ID lets the export reject a track change between metadata and artwork reads.
-        guard !trackID.isEmpty else { return nil }
+    private func fetchArtwork(identity: ArtworkIdentity) throws -> ArtworkResult {
+        // IDs are optional for streams. Exact display identity guards the export before and after
+        // reading the artwork, and every external string stays in argv rather than script source.
         if artworkDirectory == nil {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("wokintosh-artwork-" + UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             artworkDirectory = directory
         }
-        guard let directory = artworkDirectory else { return nil }
+        guard let directory = artworkDirectory else { throw ArtworkError.incomplete }
         let rawURL = directory.appendingPathComponent(UUID().uuidString + ".raw")
         defer { try? FileManager.default.removeItem(at: rawURL) }
-        _ = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", Self.artworkScript, rawURL.path, trackID], timeout: 4, maxBytes: 32 * 1024)
+        let response = try CommandRunner.run("/usr/bin/osascript", arguments: ["-e", Self.artworkScript, rawURL.path] + identity.arguments,
+                                             timeout: 4, maxBytes: 32 * 1024)
+        switch String(data: response, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "missing": return .missing
+        case "changed": return .changed
+        case "exported": break
+        default: throw ArtworkError.incomplete
+        }
         let size = try rawURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size > 0, size <= 16 * 1024 * 1024 else { return nil }
-        guard let bitmap = NSBitmapImageRep(data: try Data(contentsOf: rawURL)),
-              let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        guard size > 0 else { throw ArtworkError.incomplete }
+        guard size <= 16 * 1024 * 1024 else { throw ArtworkError.oversized }
+        let raw = try Data(contentsOf: rawURL)
+        // Inspect dimensions before decoding, then cache a bounded square-cover-resolution image.
+        guard let imageSource = CGImageSourceCreateWithData(raw as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+              width.doubleValue > 0, height.doubleValue > 0,
+              width.doubleValue * height.doubleValue <= 16 * 1024 * 1024 else { throw ArtworkError.invalidImage }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                       kCGImageSourceCreateThumbnailWithTransform: true,
+                                       kCGImageSourceThumbnailMaxPixelSize: 1024]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw ArtworkError.invalidImage }
         let url = directory.appendingPathComponent(UUID().uuidString + ".png")
         try png.write(to: url, options: .atomic)
-        return url
+        return .available(url)
+    }
+
+    private static func artworkErrorStatus(_ error: Error) -> String {
+        if case RunnerError.timedOut = error { return "Artwork request timed out. Wokintosh will retry." }
+        if case ArtworkError.oversized = error { return "Apple Music artwork is too large to display." }
+        if case ArtworkError.invalidImage = error { return "Apple Music artwork could not be decoded." }
+        // Playback metadata remains valid even when a separate artwork Apple Event fails.
+        return "Artwork could not be read from Apple Music. Wokintosh will retry."
     }
 
     private static let metadataScript = #"""
@@ -283,15 +350,65 @@ private actor MusicSource {
     """#
 
     private static let artworkScript = #"""
+    on textValue(value)
+        if value is missing value then return ""
+        return value as text
+    end textValue
+
+    on matchesTrack(candidate, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration)
+        tell application id "com.apple.Music"
+            if expectedID is not "" then
+                try
+                    if (persistent ID of candidate as text) is not expectedID then return false
+                on error
+                    return false
+                end try
+            end if
+            set actualTitle to ""
+            set actualArtist to ""
+            set actualAlbum to ""
+            set actualDuration to 0
+            try
+                set actualTitle to my textValue(name of candidate)
+            end try
+            try
+                set actualArtist to my textValue(artist of candidate)
+            end try
+            try
+                set actualAlbum to my textValue(album of candidate)
+            end try
+            try
+                set durationValue to duration of candidate
+                if durationValue is not missing value then set actualDuration to durationValue
+            end try
+        end tell
+        considering case
+            if actualTitle is not expectedTitle or actualArtist is not expectedArtist or actualAlbum is not expectedAlbum then return false
+        end considering
+        if actualDuration < 0 then set actualDuration to 0
+        if actualDuration < expectedDuration - 0.01 or actualDuration > expectedDuration + 0.01 then return false
+        return true
+    end matchesTrack
+
     on run argv
         set outputPath to item 1 of argv
         set expectedID to item 2 of argv
+        set expectedTitle to item 3 of argv
+        set expectedArtist to item 4 of argv
+        set expectedAlbum to item 5 of argv
+        set expectedDuration to (item 6 of argv) as real
         tell application id "com.apple.Music"
-            if player state is stopped then return ""
-            if persistent ID of current track is not expectedID then return ""
-            if (count artworks of current track) is 0 then return ""
-            set imageBytes to raw data of artwork 1 of current track
+            if player state is stopped then return "changed"
+            set currentSong to current track
         end tell
+        if not my matchesTrack(currentSong, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration) then return "changed"
+        tell application id "com.apple.Music"
+            if (count artworks of currentSong) is 0 then return "missing"
+            set imageBytes to raw data of artwork 1 of currentSong
+            if player state is stopped then return "changed"
+            set latestSong to current track
+        end tell
+        if not my matchesTrack(latestSong, expectedID, expectedTitle, expectedArtist, expectedAlbum, expectedDuration) then return "changed"
         set outputFile to open for access POSIX file outputPath with write permission
         try
             set eof outputFile to 0
@@ -303,7 +420,7 @@ private actor MusicSource {
             end try
             error messageText number errorNumber
         end try
-        return ""
+        return "exported"
     end run
     """#
 }

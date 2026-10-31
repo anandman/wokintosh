@@ -1,16 +1,17 @@
 import Foundation
 public enum AgentState: String, Codable, CaseIterable, Sendable {
-    case working, needsAttention, idle, finished, unknown
+    case working, needsAttention, blocked, idle, finished, unknown
     public init(from decoder: Decoder) throws { self = AgentState(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unknown }
 }
 public struct AgentSession: Codable, Equatable, Sendable {
     public var id: String; public var provider: String; public var title: String; public var project: String
     public var state: AgentState; public var updatedAt: Date; public var activity: String?; public var parentId: String?
     public var isHelper: Bool
-    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false) {
-        self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId; self.isHelper=isHelper || parentId != nil
+    public var goalBlocked: Bool?
+    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false, goalBlocked: Bool? = nil) {
+        self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId; self.isHelper=isHelper || parentId != nil;self.goalBlocked=goalBlocked
     }
-    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper }
+    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper,goalBlocked }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(String.self,forKey:.id);provider=try c.decode(String.self,forKey:.provider)
@@ -18,6 +19,7 @@ public struct AgentSession: Codable, Equatable, Sendable {
         state=try c.decode(AgentState.self,forKey:.state);updatedAt=try c.decode(Date.self,forKey:.updatedAt)
         activity=try c.decodeIfPresent(String.self,forKey:.activity);parentId=try c.decodeIfPresent(String.self,forKey:.parentId)
         isHelper=(try c.decodeIfPresent(Bool.self,forKey:.isHelper) ?? false) || parentId != nil
+        goalBlocked=try c.decodeIfPresent(Bool.self,forKey:.goalBlocked)
     }
 }
 public struct HostInfo: Codable, Equatable, Sendable { public var id: String; public var name: String; public var platform: String }
@@ -57,7 +59,7 @@ public struct AgentPresentation {
     public var doneCount: Int = 0
     public var visible: [SessionRow]; public var hiddenCount: Int; public var attentionCount: Int; public var workingCount: Int
     public var hiddenAttentionCount: Int {
-        attentionCount-visible.filter { $0.connected && $0.session.state == .needsAttention }.count
+        attentionCount-visible.filter { $0.session.state == .blocked || ($0.connected && $0.session.state == .needsAttention) }.count
     }
     public var overflowLabel: String? {
         if hiddenAttentionCount > 0 { return "+\(hiddenCount) more · \(hiddenAttentionCount) \(hiddenAttentionCount == 1 ? "needs" : "need") you" }
@@ -74,18 +76,19 @@ public struct AgentPresentation {
         }
         let visible = Array(sorted.prefix(max(0, capacity)))
         return AgentPresentation(doneCount: filtered.filter(\.completionPending).count, visible: visible, hiddenCount: sorted.count-visible.count,
-                                 attentionCount: filtered.filter { $0.connected && $0.session.state == .needsAttention }.count,
+                                 attentionCount: filtered.filter { $0.session.state == .blocked || ($0.connected && $0.session.state == .needsAttention) }.count,
                                  workingCount: filtered.filter { $0.connected && $0.session.state == .working }.count)
     }
     private static func priority(_ row: SessionRow) -> Int {
         if row.connected && row.session.state == .needsAttention { return 0 }
-        if row.completionPending { return 1 }
-        if row.connected && row.session.state == .working { return 2 }
-        return 3+(row.connected ? row.session.state.priority : AgentState.unknown.priority)
+        if row.session.state == .blocked { return 1 }
+        if row.completionPending { return 2 }
+        if row.connected && row.session.state == .working { return 3 }
+        return 4+(row.connected ? row.session.state.priority : AgentState.unknown.priority)
     }
 }
 
 public extension AgentState {
-    var priority: Int { switch self { case .needsAttention: return 0; case .working: return 1; case .unknown: return 2; case .idle: return 3; case .finished: return 4 } }
-    var label: String { switch self { case .needsAttention: return "Needs you"; case .working: return "Working"; case .unknown: return "Unknown"; case .idle: return "Idle"; case .finished: return "Done" } }
+    var priority: Int { switch self { case .needsAttention: return 0; case .blocked: return 1; case .working: return 2; case .unknown: return 3; case .idle: return 4; case .finished: return 5 } }
+    var label: String { switch self { case .needsAttention: return "Needs you"; case .blocked: return "Blocked"; case .working: return "Working"; case .unknown: return "Unknown"; case .idle: return "Idle"; case .finished: return "Done" } }
 }

@@ -14,8 +14,9 @@ import SwiftUI
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let store=DashboardStore()
     var dashboard: DashboardWindow?
-    var editor: NSWindow?
     var settings: NSWindow?
+    private var pendingMessages:[AppMessage]=[]
+    private var activeMessage:AppMessage?
     private var transitioning=false
     private var resumeAfterExit=false
     private var pendingDisplayID:UInt32?
@@ -26,6 +27,7 @@ import SwiftUI
         makeMenu()
         store.showEditor = { [weak self] in self?.openEditor() }
         store.showSettings = { [weak self] in self?.openSettings() }
+        store.presentMessage = { [weak self] message in self?.enqueueMessage(message) }
         store.presentDashboard = { [weak self] id in self?.present(on: id) }
         let window=DashboardWindow(contentRect: NSRect(x:0,y:0,width:1280,height:720), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
         window.title="Wokintosh"
@@ -49,8 +51,8 @@ import SwiftUI
         let appMenu=NSMenu(); appItem.submenu=appMenu
         appMenu.addItem(withTitle:"About Wokintosh",action:#selector(NSApplication.orderFrontStandardAboutPanel(_:)),keyEquivalent:"")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle:"Settings…",action:#selector(settingsAction),keyEquivalent:",").target=self
-        let layoutEditor=appMenu.addItem(withTitle:"Layout Editor…",action:#selector(editorAction),keyEquivalent:"l")
+        appMenu.addItem(withTitle:"Dashboard & Settings…",action:#selector(settingsAction),keyEquivalent:",").target=self
+        let layoutEditor=appMenu.addItem(withTitle:"Edit Dashboard…",action:#selector(editorAction),keyEquivalent:"l")
         layoutEditor.target=self;layoutEditor.keyEquivalentModifierMask=[.command,.shift]
         appMenu.addItem(withTitle:"Present on Display",action:#selector(presentAction),keyEquivalent:"f").target=self
         let leave=appMenu.addItem(withTitle:"Leave Presentation",action:#selector(leavePresentation),keyEquivalent:"\u{1b}")
@@ -81,34 +83,38 @@ import SwiftUI
         window.collectionBehavior=[]
         window.setContentSize(NSSize(width:1280,height:720));window.center()
     }
-    func openEditor() {
-        if let editor { editor.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps:true);return }
-        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1450,height:950),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
-        window.title="Wokintosh — Layout Editor"
-        window.identifier=NSUserInterfaceItemIdentifier("wokintosh-editor")
-        window.contentView=NSHostingView(rootView: EditorView(store:store))
-        let available=NSScreen.screens.filter { (($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value) != store.document.displayID }
-        let screen=available.max { $0.visibleFrame.width*$0.visibleFrame.height < $1.visibleFrame.width*$1.visibleFrame.height } ?? NSScreen.main
-        if let frame=screen?.visibleFrame {
-            let width=min(1450,frame.width*0.95),height=min(950,frame.height*0.93)
-            window.setFrame(NSRect(x:frame.midX-width/2,y:frame.midY-height/2,width:width,height:height),display:false)
-            window.minSize=NSSize(width:min(1000,frame.width),height:min(700,frame.height))
-        } else {window.center()}
-        window.isReleasedWhenClosed=false
-        window.makeKeyAndOrderFront(nil);editor=window
+    func openEditor() { store.openSettings(.widgets) }
+    private func enqueueMessage(_ message:AppMessage) {
+        guard activeMessage != message,!pendingMessages.contains(message) else { return }
+        pendingMessages.append(message)
+        presentNextMessage()
+    }
+    private func presentNextMessage() {
+        guard activeMessage == nil,!pendingMessages.isEmpty else { return }
+        activeMessage=pendingMessages.removeFirst()
+        guard let message=activeMessage else { return }
+        openSettings()
+        guard let settings else { activeMessage=nil;return }
+        let alert=NSAlert()
+        alert.messageText=message.title;alert.informativeText=message.message
+        alert.alertStyle=message.isError ? .warning : .informational
+        alert.addButton(withTitle:"OK")
+        alert.beginSheetModal(for:settings) { [weak self] _ in
+            Task { @MainActor in self?.activeMessage=nil;self?.presentNextMessage() }
+        }
     }
     func openSettings() {
         if let settings { settings.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true);return }
-        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:940,height:780),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
-        window.title="Wokintosh Settings"
+        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1560,height:920),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
+        window.title="Wokintosh — Dashboard & Settings"
         window.identifier=NSUserInterfaceItemIdentifier("wokintosh-settings")
         window.contentView=NSHostingView(rootView:SettingsView(store:store))
-        window.minSize=NSSize(width:820,height:680)
+        window.minSize=NSSize(width:1050,height:720)
         window.tabbingMode = .disallowed
         let available=NSScreen.screens.filter { screenID($0) != store.document.displayID }
         let screen=available.max { $0.visibleFrame.width*$0.visibleFrame.height < $1.visibleFrame.width*$1.visibleFrame.height } ?? NSScreen.main
         if let frame=screen?.visibleFrame {
-            let width=min(940,frame.width),height=min(780,frame.height)
+            let width=min(1560,frame.width*0.95),height=min(920,frame.height*0.93)
             window.setFrame(NSRect(x:frame.midX-width/2,y:frame.midY-height/2,width:width,height:height),display:false)
         } else { window.center() }
         window.isReleasedWhenClosed=false
@@ -167,12 +173,12 @@ import SwiftUI
     func windowDidFailToEnterFullScreen(_ window:NSWindow) {
         guard window === dashboard else{return}
         transitioning=false;resumeAfterExit=false;exitRequested=false;store.document.presentationEnabled=false
-        restoreWindowChrome();store.notice="macOS could not enter fullscreen. Try Present again or choose borderless mode.";openEditor()
+        restoreWindowChrome();store.openSettings(.display);enqueueMessage(AppMessage(title:"Could Not Enter Fullscreen",message:"Try Present again or turn off native fullscreen in Display settings.",isError:true))
     }
     func restorePresentationIfPossible() {
         guard store.document.presentationEnabled else{return}
         if let id=store.document.displayID,NSScreen.screens.contains(where:{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id}) { present(on:id) }
-        else { suspendPresentation(remember:true);store.notice="The selected display is disconnected. Choose a presentation display in Settings.";openEditor() }
+        else { suspendPresentation(remember:true);store.openSettings(.display);enqueueMessage(AppMessage(title:"Display Disconnected",message:"Choose a connected presentation display in Display settings.")) }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool { false }
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool { dashboard?.makeKeyAndOrderFront(nil);return true }

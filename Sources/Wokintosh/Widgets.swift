@@ -81,6 +81,14 @@ struct AgentWidget: View {
                 }.frame(maxWidth:.infinity,alignment:.leading)
                 state(row,t:t,font:24).frame(width:218*t,alignment:.leading)
             }
+        }.contextMenu {
+            if store.isManuallyBlocked(row) {
+                Button("Clear Manual Blocked") { store.clearManualBlocked(row) }
+            } else if row.session.state != .blocked {
+                Button("Mark Blocked") { store.markBlocked(row) }
+            } else {
+                Text("Clear the published goal status on its machine")
+            }
         }.help("\(row.session.title)\n\(metadata(row))\n\(row.session.activity ?? row.session.state.label)\nLast activity: \(row.session.updatedAt.formatted(date:.abbreviated,time:.standard))")
     }
     func metadata(_ row:SessionRow)->String {
@@ -90,7 +98,7 @@ struct AgentWidget: View {
     func state(_ row:SessionRow,t:Double,font:Double)->some View {
         HStack(spacing:8) {
             StatusDot(state:row.session.state,connected:row.connected).frame(width:16*t,height:16*t)
-            Text(row.connected ? row.session.state.label : "Offline").font(retroFont(font*t)).foregroundStyle(StatusDot(state:row.session.state,connected:row.connected).tint)
+            Text(row.connected || row.session.state == .blocked ? row.session.state.label : "Offline").font(retroFont(font*t)).foregroundStyle(StatusDot(state:row.session.state,connected:row.connected).tint)
             if row.completionPending {
                 Button { store.reviewCompletion(row) } label:{Text("Review").font(retroFont(17*t)).padding(.horizontal,5).frame(minHeight:30*t).overlay(Rectangle().stroke(Color.retroPurple,lineWidth:1))}
                     .buttonStyle(.plain).foregroundStyle(Color.retroPurple).accessibilityLabel("Mark \(row.session.title) done as reviewed").help("Mark done as reviewed")
@@ -132,7 +140,7 @@ struct MusicWidget: View {
     @ViewBuilder func artwork(preview:Bool,url:URL?)->some View {
         if preview, let file=Bundle.module.url(forResource:"preview-artwork",withExtension:"png"),let image=NSImage(contentsOf:file) { Image(nsImage:image).resizable().scaledToFill().clipped() }
         else if let url,let image=NSImage(contentsOf:url) { Image(nsImage:image).resizable().scaledToFill().clipped() }
-        else { Rectangle().fill(Color.retroPurple.opacity(0.22)).overlay(Image(systemName:"music.note").font(.system(size:48)).foregroundStyle(Color.retroPurple)) }
+        else { Rectangle().fill(Color.retroPurple.opacity(0.22)).overlay(Image(systemName:"music.note").font(.system(size:48)).foregroundStyle(Color.retroPurple)).help(store.native.music.artworkStatus.isEmpty ? "No artwork provided by Apple Music" : store.native.music.artworkStatus) }
     }
     func details(preview:Bool,compact:Bool,t:Double,showArtist:Bool)->some View {
         VStack(alignment:.leading,spacing:compact ? 4 : 8) {
@@ -238,7 +246,7 @@ struct WeatherWidget:View {
             let preview=store.document.previewMode
             let temp=preview ? 18.0 : info.temperature
             let t=store.document.textScale
-            let compact=g.size.height/t < 100
+            let compact=g.size.height/t < 90
             if let temp {
                 HStack(spacing:12) {
                     Image(systemName:preview ? "cloud.sun.fill" : info.symbol).symbolRenderingMode(.palette).foregroundStyle(.gray,.yellow).font(.system(size:compact ? min(36,g.size.height-18) : min(58,(g.size.height-16)*0.65)))

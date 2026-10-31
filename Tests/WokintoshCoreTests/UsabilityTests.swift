@@ -15,12 +15,15 @@ final class UsabilityTests: XCTestCase {
     func testResizeStaysAnchoredAtCanvasEdgesAndMinimumSize() {
         let start=WidgetFrame(x:0.6,y:0.65,width:0.25,height:0.2)
         let large=WidgetInteraction.resizing(start,dx:1000,dy:1000,kind:.agents,snap:true)
-        XCTAssertEqual(large.width,0.4,accuracy:0.000001);XCTAssertEqual(large.height,0.35,accuracy:0.000001)
+        XCTAssertEqual(large.width,0.4,accuracy:0.000001)
+        XCTAssertEqual((large.y+large.height)*682,672,accuracy:0.000001)
         XCTAssertEqual(large.x,start.x);XCTAssertEqual(large.y,start.y)
         XCTAssertLessThanOrEqual(large.x+large.width,1)
         XCTAssertLessThanOrEqual(large.y+large.height,1)
         let small=WidgetInteraction.resizing(start,dx:-1000,dy:-1000,kind:.agents,snap:true)
-        XCTAssertEqual(small.width,0.25);XCTAssertEqual(small.height,0.2)
+        XCTAssertEqual(small.width,0.25)
+        XCTAssertGreaterThanOrEqual(small.height,0.2)
+        XCTAssertEqual((small.y+small.height)*682,592,accuracy:0.000001)
     }
     func testCompletionSurvivesReloadUntilReviewedThenReappearsForNewTurn() throws {
         let now=Date(timeIntervalSince1970:1000000)
