@@ -31,10 +31,8 @@ public enum RemoteInstall {
             try runner(RemoteInstallCommand(executable: "/usr/bin/ssh", arguments: RemoteCommand.sshArguments(destination: destination, command: command), timeout: timeout, maxBytes: maxBytes))
         }
         progress("Checking SSH and Python 3.10 or later…")
-        let probe = try JSONDecoder().decode(PythonProbe.self, from: ssh(probeCommand))
-        guard probe.version.count >= 2, probe.version[0] > 3 || (probe.version[0] == 3 && probe.version[1] >= 10),
-              safeAbsolutePath(probe.home), safeAbsolutePath(probe.python),
-              !probe.python.contains(where: { $0.isWhitespace }) else {
+        let probe = try JSONDecoder().decode(PythonDiscovery.Probe.self, from: ssh(PythonDiscovery.probeCommand))
+        guard probe.isUsable else {
             throw RunnerError.failed("The remote machine needs Python 3.10 or later at an absolute path without spaces, and a valid home directory.")
         }
         let home = probe.home == "/" ? "" : probe.home.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -88,51 +86,7 @@ public enum RemoteInstall {
         }
     }
 
-    private struct PythonProbe: Decodable { let home: String; let python: String; let version: [Int] }
     private struct CommitResult: Decodable { let backupPath: String? }
-    private static func safeAbsolutePath(_ value: String) -> Bool {
-        value.hasPrefix("/") && value.utf8.count <= 4096 && !value.contains(where: { $0 == "\0" || $0 == "\n" || $0 == "\r" })
-    }
-
-    private static let probeCommand: String = {
-        let script = "import json,os,sys; sys.exit(2) if sys.version_info < (3,10) or not sys.executable or not os.path.isabs(sys.executable) or len(sys.executable)>4096 or any(c.isspace() for c in sys.executable) else None; print(json.dumps({'home':os.path.expanduser('~'),'python':sys.executable,'version':list(sys.version_info[:3])}))"
-        let shell = """
-        search_directory() {
-            case "$1" in /*) ;; *) return ;; esac
-            for p in "$1"/python3 "$1"/python3.[0-9]*; do
-                [ -f "$p" ] && [ -x "$p" ] || continue
-                name=${p##*/}
-                case "$name" in
-                    python3) ;;
-                    python3.*)
-                        minor=${name#python3.}
-                        case "$minor" in ''|*[!0-9]*) continue ;; esac
-                        ;;
-                    *) continue ;;
-                esac
-                if "$p" -c \(RemoteCommand.shellQuote(script)) 2>/dev/null; then exit 0; fi
-            done
-        }
-        if python3 -c \(RemoteCommand.shellQuote(script)) 2>/dev/null; then exit 0; fi
-        remaining=${PATH:-}
-        while [ -n "$remaining" ]; do
-            case "$remaining" in
-                *:*) directory=${remaining%%:*}; remaining=${remaining#*:} ;;
-                *) directory=$remaining; remaining= ;;
-            esac
-            search_directory "$directory"
-        done
-        for directory in /opt/homebrew/bin /usr/local/bin /usr/bin \\
-                         /opt/homebrew/opt/python@3.*/bin /usr/local/opt/python@3.*/bin \\
-                         /Library/Frameworks/Python.framework/Versions/3.*/bin; do
-            search_directory "$directory"
-        done
-        printf '%s\\n' 'Wokintosh could not find Python 3.10 or later in the SSH PATH or common Python installation locations.' >&2
-        exit 1
-        """
-        return "sh -c " + RemoteCommand.shellQuote(shell)
-    }()
-
     // The lock is precreated inside the private stage. Never recreate it: a late
     // process holding an unlinked lock must fail its stage/inode check after cleanup.
     private static let lockScript = """

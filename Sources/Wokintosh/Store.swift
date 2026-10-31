@@ -28,6 +28,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var saveTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var nativeSubscription: AnyCancellable?
+    private let localPython = LocalPythonDiscovery()
     private let actionExecutor:WidgetActionExecutor
     private var actionInFlight=Set<UUID>()
     var showEditor: (() -> Void)?
@@ -238,7 +239,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     var offlineCount: Int { feeds.values.filter { $0.error != nil }.count }
     var collectorURL: URL? { Bundle.main.url(forResource: "wokintosh_agent", withExtension: "py") }
-    var pythonPath: String? { ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"].first { FileManager.default.isExecutableFile(atPath: $0) } }
 
     func refresh() async {
         guard !refreshing else { return }
@@ -261,9 +261,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private func refreshFeeds() async {
         struct Request: Sendable { var id: String; var name: String; var executable: String; var arguments: [String] }
         var requests: [Request] = []
-        if let collector = collectorURL, let python = pythonPath {
+        if let collector = collectorURL, let python = await localPython.path() {
             requests.append(Request(id: "local", name: "This Mac", executable: python, arguments: [collector.path, "snapshot", "--json"]))
-        } else { feeds["local"] = FeedStatus(name: "This Mac", error: "Python 3 or the bundled collector is missing") }
+        } else { feeds["local"] = FeedStatus(name: "This Mac", error: "Python 3.10 or later, or the bundled collector, is missing") }
         let enabled = document.remoteHosts.filter(\.enabled)
         let allowed = Set(enabled.map { $0.id.uuidString }).union(["local"])
         feeds = feeds.filter { allowed.contains($0.key) }
@@ -293,7 +293,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
 
     func installHooks(provider: String) async {
-        guard ["codex", "claude"].contains(provider), let python = pythonPath, let collector = collectorURL else { presentMessage?(AppMessage(title:"Collector Unavailable",message:"Install Python 3.10 or later and reopen Wokintosh before enabling observers.",isError:true)); return }
+        guard ["codex", "claude"].contains(provider), let python = await localPython.path(), let collector = collectorURL else { presentMessage?(AppMessage(title:"Collector Unavailable",message:"Install Python 3.10 or later, then try enabling observers again after 30 seconds.",isError:true)); return }
         do {
             let helpers=dataDirectory.appendingPathComponent("bin",isDirectory:true)
             try FileManager.default.createDirectory(at:helpers,withIntermediateDirectories:true)
