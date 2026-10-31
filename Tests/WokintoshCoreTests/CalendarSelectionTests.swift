@@ -57,7 +57,7 @@ final class CalendarSelectionTests: XCTestCase {
     }
 
     func testOptionsRoundTripAndDecodeDefaultsIncludingExplicitEmptySelection() throws {
-        let options = CalendarSelectionOptions(calendarIDs: [], includeAllDay: false, nextEventOnly: false)
+        let options = CalendarSelectionOptions(calendarIDs: [], includeAllDay: false, nextEventOnly: false, excludedTitlePatterns: ["Placeholder"], collapseMirrors: false)
         XCTAssertEqual(try JSONDecoder().decode(CalendarSelectionOptions.self, from: JSONEncoder().encode(options)), options)
         XCTAssertEqual(try JSONDecoder().decode(CalendarSelectionOptions.self, from: Data("{}".utf8)), CalendarSelectionOptions())
         XCTAssertEqual(try JSONDecoder().decode(CalendarSelectionOptions.self, from: Data(#"{"calendarIDs":[]}"#.utf8)).calendarIDs, [])
@@ -69,4 +69,60 @@ final class CalendarSelectionTests: XCTestCase {
         XCTAssertEqual(entry.calendarTitle, "")
         XCTAssertEqual(CalendarInfo(events: [entry], status: "Upcoming", authorized: true).calendars, [])
     }
+    func testGenericMirrorCannotWinNextEventAheadOfOriginalTitle() {
+        var mirror = event("mirror", calendarID: "mirror")
+        mirror.title = "  BLOCKED   Time  "
+        var original = event("original", calendarID: "work")
+        original.title = "Zebra project review"
+        let info = CalendarInfo(events: [mirror, original])
+        XCTAssertEqual(info.events(for: CalendarSelectionOptions(), at: now).map(\.id), ["original"])
+    }
+
+    func testStandaloneBlockAndUnrelatedOverlapRemainVisible() {
+        var block = event("standalone", start: 60, end: 180)
+        block.title = "Busy"
+        var overlap = event("overlap", start: 90, end: 150)
+        overlap.title = "Customer call"
+        var sameTime = event("same-time", start: 60, end: 180)
+        sameTime.title = "Private appointment with doctor"
+        let info = CalendarInfo(events: [overlap, block, sameTime])
+        XCTAssertEqual(info.events(for: CalendarSelectionOptions(nextEventOnly: false), at: now).map(\.id), ["same-time", "overlap"])
+        XCTAssertEqual(CalendarInfo(events: [block, overlap]).events(for: CalendarSelectionOptions(nextEventOnly: false), at: now).map(\.id), ["standalone", "overlap"])
+    }
+
+    func testUnselectedAlternativeDoesNotHideSelectedBlock() {
+        var mirror = event("mirror", calendarID: "mirror")
+        mirror.title = "Private appointment"
+        let original = event("original", calendarID: "work")
+        let info = CalendarInfo(events: [mirror, original])
+        XCTAssertEqual(info.events(for: CalendarSelectionOptions(calendarIDs: ["mirror"]), at: now).map(\.id), ["mirror"])
+    }
+
+    func testExplicitTitleExclusionsArePlainCaseInsensitiveLinesBeforeNextLimit() throws {
+        var placeholder = event("placeholder", start: 30, end: 90)
+        placeholder.title = "[Private] BLOCKED entry"
+        var regexLookalike = event("literal", start: 60, end: 120)
+        regexLookalike.title = "Private entry"
+        let options = try JSONDecoder().decode(CalendarSelectionOptions.self, from: Data(#"{"excludedTitlePatterns":["  [private]  \n  ","   "],"nextEventOnly":true}"#.utf8))
+        XCTAssertEqual(CalendarInfo(events: [placeholder, regexLookalike]).events(for: options, at: now).map(\.id), ["literal"])
+    }
+
+    func testMirrorCollapseCanBeDisabledAndSortIsDeterministic() throws {
+        var mirror = event("mirror")
+        mirror.title = "Blocked Time"
+        var original = event("original")
+        original.title = "Zebra review"
+        let options = try JSONDecoder().decode(CalendarSelectionOptions.self, from: Data(#"{"collapseMirrors":false,"nextEventOnly":false}"#.utf8))
+        XCTAssertEqual(CalendarInfo(events: [original, mirror]).events(for: options, at: now).map(\.id), ["mirror", "original"])
+        var a = event("a"); a.title = "Same title"
+        var z = event("z"); z.title = "Same title"
+        XCTAssertEqual(CalendarInfo(events: [z, a]).events(for: CalendarSelectionOptions(nextEventOnly: false), at: now).map(\.id), ["a", "z"])
+    }
+
+    func testDifferentRealEventsAtSameTimeAreNotCollapsed() {
+        var first = event("first"); first.title = "Project review"
+        var second = event("second"); second.title = "Customer call"
+        XCTAssertEqual(CalendarInfo(events: [first, second]).events(for: CalendarSelectionOptions(nextEventOnly: false), at: now).map(\.id), ["second", "first"])
+    }
+
 }

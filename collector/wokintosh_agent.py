@@ -21,11 +21,11 @@ from datetime import datetime, timezone, timedelta
 MAX_LOG_BYTES = 2 * 1024 * 1024
 STALE_SECONDS = 1800
 MARKER = 'wokintosh-observer'
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 MAX_CACHE_BYTES = 1024 * 1024
 MAX_CACHE_ENTRIES = 512
 SCAN_GAP = {'_wokintosh_scan_gap': True}
-SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId')
+SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId', 'isHelper')
 STATES = {'working', 'needsAttention', 'idle', 'finished', 'unknown'}
 HOOK_EVENT_FIELDS = ('hook_event_name', 'session_id', 'sessionId', 'agent_id', 'tool_name',
                      'call_id', 'tool_use_id', 'notification_type', '_observedAt')
@@ -82,7 +82,8 @@ def base_session(identity, provider, cwd, updated, title=None, parent=None):
             'title': clean(title or f'{project} · {str(identity)[:6]}', 90),
             'project': clean(project, 90), 'state': 'unknown',
             'updatedAt': stamp(updated), 'activity': '',
-            'parentId': (clean(parent, 180) or None) if isinstance(parent, str) else None}
+            'parentId': (clean(parent, 180) or None) if isinstance(parent, str) else None,
+            'isHelper': isinstance(parent, str) and bool(clean(parent, 180))}
 
 
 def finalize(session, now):
@@ -119,15 +120,22 @@ def read_codex(path, now, title_index=None):
                 continue
             title = (title_index or {}).get(identity) or payload.get('title') or payload.get('thread_name')
             source = payload.get('source')
-            parent = None
+            parent = payload.get('parent_thread_id')
             if isinstance(source, dict):
                 sub = source.get('subagent', {})
                 if isinstance(sub, dict):
                     spawn = sub.get('thread_spawn', sub)
                     if isinstance(spawn, dict):
-                        parent = spawn.get('parent_thread_id')
-            session = base_session(identity, 'codex', payload.get('cwd', ''), last_time, title, parent)
+                        parent = parent if isinstance(parent, str) and parent else spawn.get('parent_thread_id')
+            metadata = base_session(identity, 'codex', payload.get('cwd', ''), last_time, title, parent)
+            metadata['isHelper'] = metadata['isHelper'] or (isinstance(source, dict) and 'subagent' in source)
+            if session and session['id'] == metadata['id']:
+                for field in ('title', 'project', 'parentId', 'isHelper'):
+                    session[field] = metadata[field]
+            else:
+                session = metadata
         elif session:
+            observed_activity = False
             event = payload.get('type')
             if kind == 'event_msg':
                 transitions = {'task_started': ('working', 'Working'),
@@ -136,6 +144,7 @@ def read_codex(path, now, title_index=None):
                                'approval_request': ('needsAttention', 'Approval needed'),
                                'request_user_input': ('needsAttention', 'Input needed')}
                 if event in transitions:
+                    observed_activity = True
                     lifecycle_seen = True
                     session['state'], session['activity'] = transitions[event]
                     if event in ('task_started', 'task_complete', 'turn_aborted'):
@@ -150,9 +159,12 @@ def read_codex(path, now, title_index=None):
                 elif (event in ('agent_reasoning', 'agent_message') and not lifecycle_seen
                       and session['state'] != 'needsAttention' and not pending_input and not unmatched_input):
                     session['state'], session['activity'] = 'working', 'Working'
+                if event in ('agent_reasoning', 'agent_message') and session['state'] == 'working':
+                    observed_activity = True
             elif kind == 'response_item':
                 name = str(payload.get('name', ''))
                 if event in ('function_call', 'custom_tool_call') and name.endswith('request_user_input'):
+                    observed_activity = True
                     session['state'], session['activity'] = 'needsAttention', 'Input needed'
                     call_id = payload.get('call_id')
                     if isinstance(call_id, str) and call_id:
@@ -162,6 +174,7 @@ def read_codex(path, now, title_index=None):
                 elif event in ('function_call_output', 'custom_tool_call_output'):
                     call_id = payload.get('call_id')
                     if isinstance(call_id, str) and call_id in pending_input:
+                        observed_activity = True
                         del pending_input[call_id]
                         if not pending_input and not unmatched_input:
                             session['state'], session['activity'] = 'working', 'Working'
@@ -171,7 +184,12 @@ def read_codex(path, now, title_index=None):
                       (event == 'message' and payload.get('role') == 'assistant')):
                     if not lifecycle_seen and session['state'] != 'needsAttention':
                         session['state'], session['activity'] = 'working', 'Working'
-            session['updatedAt'] = stamp(last_time)
+                if (event in ('function_call', 'custom_tool_call', 'function_call_output',
+                              'custom_tool_call_output', 'reasoning') or
+                        (event == 'message' and payload.get('role') == 'assistant')) and session['state'] == 'working':
+                    observed_activity = True
+            if observed_activity:
+                session['updatedAt'] = stamp(last_time)
     if session:
         set_pending_input(session, pending_input, unmatched_input)
     return finalize(session, now)
@@ -215,7 +233,8 @@ def read_claude(path, now):
                 session['state'], session['activity'] = 'working', 'Working'
         elif kind == 'system' and item.get('subtype') == 'turn_duration':
             session['state'], session['activity'] = 'finished', 'Turn completed'
-        session['updatedAt'] = stamp(last_time)
+        if kind in ('user', 'assistant') or (kind == 'system' and item.get('subtype') == 'turn_duration'):
+            session['updatedAt'] = stamp(last_time)
     return finalize(session, now)
 
 
@@ -262,6 +281,19 @@ def apply_hook_state(session, event, now):
         return result
     if target and target[1] and result.get('id') != clean(target[0], 180):
         return result
+    supported = {'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
+                 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop',
+                 'SessionEnd', 'SubagentStart', 'SubagentStop', 'StopFailure', 'Interrupt'}
+    if name not in supported or (name == 'Notification' and event.get('notification_type') not in
+                                ('permission_prompt', 'idle_prompt', 'elicitation_dialog')):
+        return result
+    # Starting/resuming a process is not fresh task activity. Preserve known lifecycle evidence.
+    if name == 'SessionStart':
+        if result.get('state') == 'unknown':
+            result.update(state='idle', activity='Waiting for a task')
+        return result
+    if target and target[1]:
+        result.update(parentId=clean(target[1], 180), isHelper=True)
     calls, unknown_since = pending_input_state(result)
     call_id = event.get('tool_use_id') or event.get('call_id')
     progression = name in ('UserPromptSubmit', 'SessionStart', 'SessionEnd', 'Stop',
@@ -394,6 +426,23 @@ def mounted_drives():
         for mount in sorted(mounts)[:64]]
 
 
+def macos_cpu_ticks():
+    """Read aggregate Mach host CPU ticks; percentages require two observations."""
+    import ctypes
+    try:
+        library = ctypes.CDLL('/usr/lib/libSystem.B.dylib')
+        library.mach_host_self.restype = ctypes.c_uint
+        library.host_statistics.argtypes = (ctypes.c_uint, ctypes.c_int, ctypes.c_void_p,
+                                            ctypes.POINTER(ctypes.c_uint))
+        ticks = (ctypes.c_uint * 4)()
+        count = ctypes.c_uint(4)
+        if library.host_statistics(library.mach_host_self(), 3, ticks, ctypes.byref(count)) != 0:
+            return None
+        return sum(ticks), ticks[2]  # CPU_STATE_IDLE in HOST_CPU_LOAD_INFO.
+    except (OSError, AttributeError):
+        return None
+
+
 def system_stats(home, state_dir):
     usage = disk_metrics(home)
     result = {'diskFreeBytes': usage['freeBytes'], 'diskTotalBytes': usage['totalBytes'],
@@ -432,8 +481,22 @@ def system_stats(home, state_dir):
                     pages[key] = int(value.strip().rstrip('.'))
             free = (pages.get('Pages free', 0)+pages.get('Pages inactive', 0)+pages.get('Pages speculative', 0))*page_size
             result.update(memoryTotalBytes=total, memoryUsedBytes=max(0,total-free))
-            values = command_output(['/bin/ps', '-A', '-o', '%cpu=']).split()
-            result['cpuPercent'] = min(100, sum(float(x) for x in values)/max(1, os.cpu_count() or 1))
+        except (ValueError, OSError):
+            pass
+        try:
+            ticks = macos_cpu_ticks()
+            if ticks is not None:
+                total_ticks, idle_ticks = ticks
+                previous_path = state_dir / 'macos-cpu.json'
+                try:
+                    previous = json.loads(previous_path.read_text())
+                    delta = total_ticks - previous['total']
+                    idle_delta = idle_ticks - previous['idle']
+                    if delta > 0 and 0 <= idle_delta <= delta:
+                        result['cpuPercent'] = 100 * (1 - idle_delta / delta)
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+                atomic_json(previous_path, {'total': total_ticks, 'idle': idle_ticks})
         except (ValueError, OSError):
             pass
     return result
@@ -447,7 +510,7 @@ def valid_session(value, provider=None):
         return None
     if not isinstance(value.get('state'), str) or value['state'] not in STATES:
         return None
-    for field in SESSION_FIELDS[:-1]:
+    for field in SESSION_FIELDS[:-2]:
         if not isinstance(value.get(field), str) or len(value[field]) > 180:
             return None
     if not value['id'] or not isinstance(value.get('parentId'), (str, type(None))):
@@ -458,7 +521,10 @@ def valid_session(value, provider=None):
         datetime.fromisoformat(value['updatedAt'].replace('Z', '+00:00'))
     except ValueError:
         return None
+    if 'isHelper' in value and not isinstance(value['isHelper'], bool):
+        return None
     result = {field: value.get(field) for field in SESSION_FIELDS}
+    result['isHelper'] = value.get('isHelper', False) or bool(value.get('parentId'))
     pending = value.get('_pendingInput')
     if pending is not None:
         if not isinstance(pending, dict) or not isinstance(pending.get('calls'), dict):
@@ -600,31 +666,331 @@ def make_snapshot(home, state_dir, now, host_name=None):
             'generatedAt': stamp(now), 'sessions': recent, 'system': system_stats(home, state_dir), 'errors': errors}
 
 
+HOOK_LABELS = {
+    'SessionStart': 'Started', 'UserPromptSubmit': 'Working', 'PreToolUse': 'Working',
+    'PostToolUse': 'Working', 'PermissionRequest': 'Needs permission', 'Stop': 'Done',
+    'SubagentStart': 'Helper started', 'SubagentStop': 'Helper done', 'Interrupt': 'Interrupted',
+    'Notification': 'Needs input', 'SessionEnd': 'Session ended', 'StopFailure': 'Agent error',
+    'PostToolUseFailure': 'Tool error'}
+
+
+def observer_handler(handler):
+    return isinstance(handler, dict) and handler.get('type') == 'command' and MARKER in str(handler.get('command', ''))
+
+
 def hook_install_config(provider, command, existing):
     result = copy.deepcopy(existing)
     hooks = result.setdefault('hooks', {})
+    if not isinstance(hooks, dict):
+        raise ValueError('Existing hooks must be an object')
     if provider == 'codex':
         result.setdefault('description', 'Wokintosh status observer hooks')
     observer_command = command + ' # Wokintosh status observer; ' + MARKER
-    status_message = 'Wokintosh status observer'
-    # Re-enabling also migrates existing marked commands (including older event
-    # groups), without replacing matchers or unrelated handler settings.
-    for entries in hooks.values():
+    for name, entries in hooks.items():
+        if not isinstance(entries, list):
+            continue  # Non-event metadata, including Codex hooks.state, is not an event array.
         for entry in entries:
-            for handler in entry.get('hooks', []):
-                if handler.get('type') == 'command' and MARKER in str(handler.get('command', '')):
-                    handler.update(command=observer_command, statusMessage=status_message)
-    names = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop']
-    if provider == 'claude':
-        names += ['Notification', 'SessionEnd', 'StopFailure', 'PostToolUseFailure']
-    else:
-        names += ['Interrupt']
+            handlers = entry.get('hooks', [])
+            retained = []
+            for handler in handlers:
+                if observer_handler(handler):
+                    handler.update(command=observer_command,
+                                   statusMessage='Wokintosh · ' + HOOK_LABELS.get(name, name))
+                    if handler in retained:
+                        continue  # Equivalent handlers in this group only; matchers remain independent.
+                retained.append(handler)
+            entry['hooks'] = retained
+    names = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest',
+             'Stop', 'SubagentStart', 'SubagentStop']
+    names += ['Notification', 'SessionEnd', 'StopFailure', 'PostToolUseFailure'] if provider == 'claude' else ['Interrupt']
     for name in names:
         entries = hooks.setdefault(name, [])
-        if not any(MARKER in str(h.get('command', '')) for e in entries for h in e.get('hooks', [])):
+        if not isinstance(entries, list):
+            raise ValueError('Existing hook event must be an array: ' + name)
+        if not any(observer_handler(h) for e in entries for h in e.get('hooks', [])):
             entries.append({'hooks': [{'type': 'command', 'command': observer_command,
-                                      'statusMessage': status_message, 'timeout': 3}]})
+                                      'statusMessage': 'Wokintosh · ' + HOOK_LABELS[name], 'timeout': 3}]})
     return result
+
+
+def toml_statements(text):
+    """Find complete TOML statements without interpreting or rewriting unrelated values.
+
+    Quote/depth tracking prevents apparent headers or comments inside multiline strings
+    and arrays from being treated as configuration. Python 3.10 needs no TOML dependency.
+    """
+    start = index = 0
+    quote = None
+    depth = 0
+    code_end = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if quote[0] == '"' and char == '\\':
+                index += 2
+                code_end = index
+                continue
+            if text.startswith(quote, index):
+                index += len(quote)
+                code_end = index
+                quote = None
+                continue
+            index += 1
+            code_end = index
+            continue
+        if char in ('"', "'"):
+            quote = char * 3 if text.startswith(char * 3, index) else char
+            index += len(quote)
+            code_end = index
+            continue
+        if char == '#':
+            newline = text.find('\n', index)
+            index = len(text) if newline == -1 else newline
+            continue
+        if char in '[{':
+            depth += 1
+        elif char in ']}':
+            depth -= 1
+            if depth < 0:
+                raise ValueError('Malformed TOML configuration; settings were not changed')
+        if char == '\n' and depth == 0:
+            yield start, index + 1, code_end
+            start = index + 1
+            code_end = start
+        elif not char.isspace():
+            code_end = index + 1
+        index += 1
+    if quote or depth:
+        raise ValueError('Incomplete TOML configuration; settings were not changed')
+    if start < len(text):
+        yield start, len(text), code_end
+
+
+def toml_string(value):
+    value = value.strip()
+    if value.startswith("'''") and value.endswith("'''"):
+        return value[3:-3].lstrip('\n')
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1]
+    if value.startswith('"') and not value.startswith('"""'):
+        try:
+            return json.loads(value)
+        except ValueError:
+            pass
+    return None
+
+
+def toml_key_path(value):
+    path = []
+    pattern = re.compile(r"""\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z_0-9-]+)\s*(\.|$)""")
+    index = 0
+    while index < len(value):
+        match = pattern.match(value, index)
+        if not match:
+            return ()
+        raw = match.group(1)
+        path.append(toml_string(raw) if raw[0] in ('"', "'") else raw)
+        index = match.end()
+        if not match.group(2):
+            break
+    return tuple(path)
+
+
+def toml_hook_sections(text):
+    sections = []
+    current = {'path': (), 'start': 0, 'fields': {}}
+    inline = False
+    for start, end, code_end in toml_statements(text):
+        code = text[start:code_end].strip()
+        if not code:
+            continue
+        if code.startswith('['):
+            current['end'] = start
+            sections.append(current)
+            # Only simple hook header components are edited; trust keys stay opaque.
+            brackets = 2 if code.startswith('[[') else 1
+            path = toml_key_path(code[brackets:-brackets].strip())
+            if path[:1] == ('hooks',):
+                inline = True
+            current = {'path': path, 'start': start, 'headerEnd': end, 'fields': {}}
+        else:
+            if not current['path'] and re.match(r'''\s*(?:hooks|"hooks"|'hooks')\s*\.''', code):
+                raise ValueError('Dotted inline-value TOML hooks need manual migration; settings were not changed')
+            match = re.match(r'''\s*("(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z_][A-Za-z_0-9]*)\s*=\s*''', text[start:code_end])
+            if not match:
+                # Unknown/dotted keys remain opaque, but must prohibit deleting this section.
+                current['unparsed'] = True
+                continue
+            raw_key = match.group(1)
+            key = toml_string(raw_key) if raw_key[0] in ('"', "'") else raw_key
+            if (not current['path'] and (key == 'hooks' or code.startswith('hooks.'))) or (current['path'] == ('hooks',) and key in HOOK_LABELS):
+                raise ValueError('Inline-value TOML hooks need manual migration to [[hooks.Event]] tables; settings were not changed')
+            value_start = start + match.end()
+            current['fields'][key] = (value_start, code_end, text[value_start:code_end])
+            if current['path'][:1] == ('hooks',) and key == 'hooks':
+                raise ValueError('Inline-value TOML hook handlers need [[hooks.Event.hooks]] tables; settings were not changed')
+    current['end'] = len(text)
+    sections.append(current)
+    return inline, sections
+
+
+def toml_value(value):
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (int, float)):
+        return json.dumps(value, allow_nan=False)
+    if isinstance(value, list):
+        return '[' + ', '.join(toml_value(x) for x in value) + ']'
+    if isinstance(value, dict):
+        return '{ ' + ', '.join(json.dumps(k) + ' = ' + toml_value(v) for k, v in value.items()) + ' }'
+    raise ValueError('Unsupported hook metadata cannot safely migrate to TOML; settings were not changed')
+
+
+def split_owned_hooks(existing):
+    """Separate only our marked command handlers; leave all other JSON data intact."""
+    remaining = copy.deepcopy(existing)
+    owned = {'hooks': {}}
+    for name, entries in list(remaining.get('hooks', {}).items()):
+        if not isinstance(entries, list):
+            continue
+        retained = []
+        for entry in entries:
+            own = [h for h in entry.get('hooks', []) if observer_handler(h)]
+            other = [h for h in entry.get('hooks', []) if not observer_handler(h)]
+            if own:
+                group = copy.deepcopy(entry)
+                group['hooks'] = own
+                owned['hooks'].setdefault(name, []).append(group)
+            if other or not own:
+                entry['hooks'] = other
+                retained.append(entry)
+        if retained:
+            remaining['hooks'][name] = retained
+        else:
+            del remaining['hooks'][name]
+    if remaining.get('description') == 'Wokintosh status observer hooks':
+        remaining.pop('description')
+    if not remaining.get('hooks'):
+        remaining.pop('hooks', None)
+    return owned, remaining
+
+
+def hook_install_toml(text, command, migrated):
+    inline, sections = toml_hook_sections(text)
+    if not inline:
+        return None
+    edits = []
+    own_events = set()
+    group_ids = {}
+    own_groups = {}
+    observer_command = command + ' # Wokintosh status observer; ' + MARKER
+    for index, section in enumerate(sections):
+        path = section['path']
+        if len(path) == 2 and path[0] == 'hooks':
+            group_ids[path[1]] = section['start']
+        if len(path) != 3 or path[0] != 'hooks' or path[2] != 'hooks':
+            continue
+        fields = section['fields']
+        raw_command = fields.get('command', (0, 0, ''))[2]
+        value = toml_string(raw_command)
+        if value is None and MARKER in raw_command:
+            raise ValueError('Unsupported marked TOML command string; settings were not changed')
+        if value is None or MARKER not in value or toml_string(fields.get('type', (0, 0, ''))[2]) != 'command':
+            continue
+        name = path[1]
+        group_key = (name, group_ids.get(name))
+        previous_handlers = own_groups.setdefault(group_key, [])
+        next_path = sections[index + 1]['path'] if index + 1 < len(sections) else ()
+        complex_metadata = bool(section.get('unparsed') or
+                                set(fields) - {'type', 'command', 'statusMessage', 'timeout'} or
+                                next_path[:3] == path)
+        signature = {key: field[2].strip() for key, field in fields.items()
+                     if key not in ('command', 'statusMessage')}
+        if previous_handlers and (complex_metadata or any(item[1] for item in previous_handlers)):
+            raise ValueError('Duplicate marked TOML hooks with extra metadata need manual consolidation; settings were not changed')
+        if any(item[0] == signature for item in previous_handlers):
+            # Only equivalent marked handlers in the same matcher group can be removed.
+            comments = ''.join(line for line in text[section['start']:section['end']].splitlines(True)
+                               if line.lstrip().startswith('#'))
+            edits.append((section['start'], section['end'], comments))
+            continue
+        previous_handlers.append((signature, complex_metadata))
+        own_events.add(name)
+        for key, value in (('command', observer_command), ('statusMessage', 'Wokintosh · ' + HOOK_LABELS.get(name, name))):
+            if key in fields:
+                start, end, _ = fields[key]
+                edits.append((start, end, toml_value(value)))
+            else:
+                edits.append((section['headerEnd'], section['headerEnd'], key + ' = ' + toml_value(value) + '\n'))
+    pending = hook_install_config('codex', command, migrated)['hooks']
+    additions = []
+    for name, groups in pending.items():
+        if not isinstance(groups, list) or (name in own_events and name not in migrated.get('hooks', {})):
+            continue
+        for group in groups:
+            additions.append('[[hooks.' + name + ']]\n')
+            for key, value in group.items():
+                if key != 'hooks':
+                    additions.append(json.dumps(key) + ' = ' + toml_value(value) + '\n')
+            for handler in group.get('hooks', []):
+                additions.append('[[hooks.' + name + '.hooks]]\n')
+                additions.extend(json.dumps(key) + ' = ' + toml_value(value) + '\n' for key, value in handler.items())
+            additions.append('\n')
+    for start, end, value in sorted(edits, reverse=True):
+        text = text[:start] + value + text[end:]
+    if additions:
+        text += ('\n' if text and not text.endswith('\n') else '') + '\n# Wokintosh observational hooks\n' + ''.join(additions)
+    return text
+
+
+def install_hooks(provider, home, state_dir, command, dry_run=False):
+    json_path = home / ('.claude/settings.json' if provider == 'claude' else '.codex/hooks.json')
+    existing = json.loads(json_path.read_text()) if json_path.exists() else {}
+    if not isinstance(existing, dict):
+        raise ValueError('Existing hook settings must be a JSON object')
+    changes = {}
+    warnings = []
+    primary = json_path
+    toml_path = home / '.codex/config.toml'
+    if provider == 'codex' and toml_path.exists():
+        text = toml_path.read_text()
+        owned, remaining = split_owned_hooks(existing)
+        updated = hook_install_toml(text, command, owned)
+        if updated is not None:
+            primary = toml_path
+            changes[toml_path] = updated
+            if json_path.exists():
+                changes[json_path] = json.dumps(remaining, indent=2, ensure_ascii=False) + '\n' if remaining else None
+                if remaining:
+                    warnings.append('Both config.toml and hooks.json remain because hooks.json contains unrelated hooks or metadata. '
+                                    'Wokintosh entries were migrated; consolidate unrelated entries manually to remove the Codex dual-source warning.')
+    if primary == json_path:
+        changes[json_path] = json.dumps(hook_install_config(provider, command, existing), indent=2, ensure_ascii=False) + '\n'
+    if dry_run:
+        print(changes[primary])
+    else:
+        # Prepare every new file first. Parser/serialization errors cannot cause partial migrations.
+        for path, content in changes.items():
+            if path.exists() and (content is None or path.read_text() != content):
+                shutil.copy2(path, path.with_name(path.name + '.wokintosh-backup-' + str(time.time_ns())))
+        for path, content in changes.items():
+            if content is None:
+                path.unlink()
+            elif not path.exists() or path.read_text() != content:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                fd, temporary = tempfile.mkstemp(prefix='.wokintosh-', dir=path.parent)
+                try:
+                    with os.fdopen(fd, 'w') as stream:
+                        stream.write(content)
+                    os.replace(temporary, path)
+                finally:
+                    if os.path.exists(temporary):
+                        os.unlink(temporary)
+        print(f'Installed observational hooks in {primary}. Existing entries preserved. Restart sessions and review changed hooks normally in /hooks.')
+    for warning in warnings:
+        print('Wokintosh: ' + warning, file=sys.stderr if dry_run else sys.stdout)
 
 
 def ingest_hook(provider, event, home, state_dir, now):
@@ -675,21 +1041,13 @@ def main(argv=None):
             print(f'Wokintosh observer: {type(error).__name__}', file=sys.stderr)
         print('{}')  # No approval decision, continuation instruction or model context.
     else:
-        path = args.home / ('.claude/settings.json' if args.provider == 'claude' else '.codex/hooks.json')
-        existing = json.loads(path.read_text()) if path.exists() else {}
-        if not isinstance(existing, dict):
-            parser.error('Existing hook settings must be a JSON object')
         command = shlex.join([sys.executable, str(Path(__file__).resolve()), '--home', str(args.home),
                               '--state-dir', str(state_dir), 'hook', '--provider', args.provider])
-        result = hook_install_config(args.provider, command, existing)
-        if args.dry_run:
-            print(json.dumps(result, indent=2))
-        else:
-            if path.exists():
-                backup = path.with_name(path.name+'.wokintosh-backup-'+str(time.time_ns()))
-                shutil.copy2(path, backup)
-            atomic_json(path, result)
-            print(f'Installed observational hooks in {path}. Existing entries preserved. Restart sessions to load hooks.')
+        try:
+            install_hooks(args.provider, args.home, state_dir, command, args.dry_run)
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            parser.error(str(error))
+
 
 
 if __name__ == '__main__':

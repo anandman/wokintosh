@@ -303,7 +303,7 @@ class CollectorTests(unittest.TestCase):
             run=subprocess.run(args+["snapshot","--json"],capture_output=True,text=True,check=True,timeout=10)
             session=json.loads(run.stdout)["sessions"][0]
             self.assertEqual(session["state"],"needsAttention")
-            self.assertEqual(set(session),{"id","provider","title","project","state","updatedAt","activity","parentId"})
+            self.assertEqual(set(session),{"id","provider","title","project","state","updatedAt","activity","parentId","isHelper"})
         for call_id in ("input-1","parallel-2"):
             event={"session_id":"a","hook_event_name":"PostToolUse","tool_name":"request_user_input" if call_id=="input-1" else "Bash","tool_use_id":call_id}
             subprocess.run(args+["hook","--provider","codex"],input=json.dumps(event),capture_output=True,text=True,check=True,timeout=10)

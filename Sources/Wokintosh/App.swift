@@ -15,6 +15,7 @@ import SwiftUI
     let store=DashboardStore()
     var dashboard: DashboardWindow?
     var editor: NSWindow?
+    var settings: NSWindow?
     private var transitioning=false
     private var resumeAfterExit=false
     private var pendingDisplayID:UInt32?
@@ -24,6 +25,7 @@ import SwiftUI
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenu()
         store.showEditor = { [weak self] in self?.openEditor() }
+        store.showSettings = { [weak self] in self?.openSettings() }
         store.presentDashboard = { [weak self] id in self?.present(on: id) }
         let window=DashboardWindow(contentRect: NSRect(x:0,y:0,width:1280,height:720), styleMask:[.titled,.closable,.miniaturizable,.resizable], backing:.buffered, defer:false)
         window.title="Wokintosh"
@@ -47,7 +49,9 @@ import SwiftUI
         let appMenu=NSMenu(); appItem.submenu=appMenu
         appMenu.addItem(withTitle:"About Wokintosh",action:#selector(NSApplication.orderFrontStandardAboutPanel(_:)),keyEquivalent:"")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle:"Layout Editor…",action:#selector(editorAction),keyEquivalent:",").target=self
+        appMenu.addItem(withTitle:"Settings…",action:#selector(settingsAction),keyEquivalent:",").target=self
+        let layoutEditor=appMenu.addItem(withTitle:"Layout Editor…",action:#selector(editorAction),keyEquivalent:"l")
+        layoutEditor.target=self;layoutEditor.keyEquivalentModifierMask=[.command,.shift]
         appMenu.addItem(withTitle:"Present on Display",action:#selector(presentAction),keyEquivalent:"f").target=self
         let leave=appMenu.addItem(withTitle:"Leave Presentation",action:#selector(leavePresentation),keyEquivalent:"\u{1b}")
         leave.target=self;leave.keyEquivalentModifierMask=[]
@@ -57,6 +61,7 @@ import SwiftUI
         for (title,selector,key) in [("Undo",Selector(("undo:")),"z"),("Cut",#selector(NSText.cut(_:)),"x"),("Copy",#selector(NSText.copy(_:)),"c"),("Paste",#selector(NSText.paste(_:)),"v"),("Select All",#selector(NSText.selectAll(_:)),"a")] { edit.addItem(withTitle:title,action:selector,keyEquivalent:key) }
         NSApp.mainMenu=menu
     }
+    @objc func settingsAction() { store.openSettings(store.settingsTab) }
     @objc func editorAction() { openEditor() }
     @objc func presentAction() { present(on:store.document.displayID) }
     @objc func leavePresentation() { suspendPresentation(remember:false) }
@@ -91,6 +96,25 @@ import SwiftUI
         } else {window.center()}
         window.isReleasedWhenClosed=false
         window.makeKeyAndOrderFront(nil);editor=window
+    }
+    func openSettings() {
+        if let settings { settings.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true);return }
+        let window=NSWindow(contentRect:NSRect(x:0,y:0,width:940,height:780),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
+        window.title="Wokintosh Settings"
+        window.identifier=NSUserInterfaceItemIdentifier("wokintosh-settings")
+        window.contentView=NSHostingView(rootView:SettingsView(store:store))
+        window.minSize=NSSize(width:820,height:680)
+        window.tabbingMode = .disallowed
+        let available=NSScreen.screens.filter { screenID($0) != store.document.displayID }
+        let screen=available.max { $0.visibleFrame.width*$0.visibleFrame.height < $1.visibleFrame.width*$1.visibleFrame.height } ?? NSScreen.main
+        if let frame=screen?.visibleFrame {
+            let width=min(940,frame.width),height=min(780,frame.height)
+            window.setFrame(NSRect(x:frame.midX-width/2,y:frame.midY-height/2,width:width,height:height),display:false)
+        } else { window.center() }
+        window.isReleasedWhenClosed=false
+        settings=window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps:true)
     }
     func present(on id:UInt32?) {
         guard let window=dashboard else{return}
@@ -148,7 +172,7 @@ import SwiftUI
     func restorePresentationIfPossible() {
         guard store.document.presentationEnabled else{return}
         if let id=store.document.displayID,NSScreen.screens.contains(where:{($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id}) { present(on:id) }
-        else { suspendPresentation(remember:true);store.notice="The selected display is disconnected. Choose a presentation display in the editor.";openEditor() }
+        else { suspendPresentation(remember:true);store.notice="The selected display is disconnected. Choose a presentation display in Settings.";openEditor() }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool { false }
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool { dashboard?.makeKeyAndOrderFront(nil);return true }

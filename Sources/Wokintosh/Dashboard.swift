@@ -45,7 +45,7 @@ struct DashboardCanvas: View {
             if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) disconnected").font(barFont(16)).foregroundStyle(.orange) }
             Spacer()
             TimelineView(.periodic(from:.now,by:1)) { context in Text(context.date.formatted(date:.omitted,time:.shortened)).font(barFont(21)).monospacedDigit() }
-            Button { store.showEditor?() } label: { MacMark().frame(width:26,height:27) }.buttonStyle(.plain).help("Dashboard settings")
+            Button { store.openSettings(.widgets) } label: { MacMark().frame(width:26,height:27) }.buttonStyle(.plain).help("Dashboard settings")
         }.padding(.horizontal,16).frame(maxWidth:.infinity,maxHeight:.infinity).background(Color(white:0.91)).foregroundStyle(.black)
             .overlay(alignment:.bottom) { Rectangle().fill(.black).frame(height:1.5) }
     }
@@ -72,7 +72,7 @@ struct PlacedWidget: View {
         let frame=draft ?? widget.frame
         RetroWindow(title:widget.kind.title,suffix:suffix,selected:editing && store.selectedID==widget.id,
                     onClose:editing ? { store.remove(widget.id) } : nil,
-                    onSelect:editing ? { store.selectedID=widget.id } : nil,
+                    onSelect:editing ? { store.configure(widget.id) } : nil,
                     onMove:editing ? { translation,ended in interact(translation,ended:ended,resizing:false) } : nil) {
             WidgetContent(store:store,widget:widget)
         }
@@ -91,7 +91,11 @@ struct PlacedWidget: View {
         .transaction { $0.animation=nil }
         .contextMenu {
             if editing { WidgetActions(store:store,widget:widget) }
-            else { Button("Edit Layout…") { store.showEditor?() } }
+            else {
+                Button("Configure…") { store.configure(widget.id) }
+                if widget.kind == .agents { Button("Mark all Done as reviewed") { store.reviewAllCompletions(for:widget) }.disabled(!store.rows(for:widget).contains(where: \.completionPending)) }
+                Button("Edit Layout…") { store.showEditor?() }
+            }
         }
     }
     private func interact(_ translation:CGSize,ended:Bool,resizing:Bool) {

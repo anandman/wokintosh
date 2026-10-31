@@ -6,14 +6,13 @@ import WokintoshCore
 typealias DashboardWidget = WokintoshCore.Widget
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case machines, personal, weather
+    case widgets, connections, machines, appearance, display
     var id:String { rawValue }
-    var title:String { switch self { case .machines:return "Machines";case .personal:return "Music & Calendar";case .weather:return "Weather" } }
+    var title:String { switch self { case .widgets:return "Widgets";case .connections:return "Connections";case .machines:return "Machines";case .appearance:return "Appearance";case .display:return "Display" } }
 }
 
 @MainActor final class DashboardStore: ObservableObject {
-    @Published var document: DashboardDocument { didSet { scheduleSave() } }
-    @Published var settingsPresented=false
+    @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave() } }
     @Published var settingsTab=SettingsTab.machines
     @Published private var reviewedPreviewIDs=Set<String>()
     @Published var selectedID: UUID?
@@ -27,6 +26,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var pollTask: Task<Void, Never>?
     private var nativeSubscription: AnyCancellable?
     var showEditor: (() -> Void)?
+    var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
 
     init() {
@@ -48,6 +48,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         document = loaded
         notice=loadNotice
         selectedID = loaded.widgets.first?.id
+        native.updateWidgets(loaded.widgets)
         nativeSubscription = native.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
@@ -93,8 +94,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         document.widgets.append(widget)
         selectedID = widget.id
     }
-    func configure(_ id:UUID) { selectedID=id;showEditor?() }
-    func openSettings(_ tab:SettingsTab) { settingsTab=tab;showEditor?();settingsPresented=true }
+    func configure(_ id:UUID) { selectedID=id;openSettings(.widgets) }
+    func openSettings(_ tab:SettingsTab) { settingsTab=tab;showSettings?();Task { await native.refreshConnectionStatus() } }
     func remove(_ id:UUID) { document.widgets.removeAll { $0.id == id };if selectedID == id { selectedID=document.widgets.first?.id } }
     func removeSelected() { if let selectedID { remove(selectedID) } }
     func duplicate(_ id:UUID) {
@@ -141,7 +142,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         return raw.values.filter { row in
             if let source=widget.hostID,source != row.hostID { return false }
             if let provider=widget.provider,provider != row.session.provider { return false }
-            if !widget.showHelpers && row.session.parentId != nil { return false }
+            if !widget.showHelpers && (row.session.isHelper || row.session.parentId != nil) { return false }
             if row.completionPending { return true }
             let age=Date().timeIntervalSince(row.session.updatedAt)
             if !widget.showFinished && (row.session.state == .finished || row.session.state == .idle || (row.session.state == .unknown && age>7200)) { return false }
@@ -156,7 +157,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     func selectedDrives(for widget:Widget) -> [DriveReading] {
         let available=drives(for:widget)
-        guard let ids=widget.systemOptions.driveIDs else { return Array(available.prefix(1)) }
+        guard let ids=widget.systemOptions.driveIDs else {
+            return available.isEmpty ? [DriveReading(id:"/",name:"Startup disk",mountPoint:"/")] : Array(available.prefix(1))
+        }
         return ids.map { id in available.first(where:{$0.id == id}) ?? DriveReading(id:id,name:URL(fileURLWithPath:id).lastPathComponent,mountPoint:id) }
     }
     func calendarEvents(for widget:Widget) -> [CalendarEntry] {
@@ -181,7 +184,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         defer { refreshing=false }
         if !document.previewMode {
             await refreshFeeds()
-            var completions=document.completions;completions.ingest(feedRows())
+            var completions=document.completions;completions.ingest(feedRows(),connectedHostIDs:feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
             if completions != document.completions { document.completions=completions }
             await native.refresh(document:document)
         }

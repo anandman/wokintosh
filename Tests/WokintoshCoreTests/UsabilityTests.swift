@@ -24,7 +24,7 @@ final class UsabilityTests: XCTestCase {
     }
     func testCompletionSurvivesReloadUntilReviewedThenReappearsForNewTurn() throws {
         let now=Date(timeIntervalSince1970:1000000)
-        var tracker=CompletionTracker()
+        var tracker=baselined(at:now)
         let done=row(.finished,at:now)
         tracker.ingest([row(.working,at:now.addingTimeInterval(-60))],at:now)
         tracker.ingest([done],at:now)
@@ -41,7 +41,7 @@ final class UsabilityTests: XCTestCase {
     }
     func testOldHistoryDoesNotFloodDoneAndDisconnectedStateCannotInventCompletion() {
         let now=Date(timeIntervalSince1970:1000000)
-        var tracker=CompletionTracker()
+        var tracker=baselined(at:now)
         tracker.ingest([row(.finished,at:now.addingTimeInterval(-2*86400))],at:now)
         var offline=row(.finished,at:now);offline.connected=false
         tracker.ingest([offline],at:now)
@@ -54,7 +54,7 @@ final class UsabilityTests: XCTestCase {
     func testNewerConnectedUnknownOrIdleSupersedesPersistedCompletion() throws {
         let now=Date(timeIntervalSince1970:1000000)
         for state in [AgentState.unknown,.idle] {
-            var tracker=CompletionTracker()
+            var tracker=baselined(at:now)
             let done=row(.finished,at:now)
             let other=row(.finished,at:now,id:"other")
             tracker.ingest([done,other],at:now)
@@ -68,7 +68,7 @@ final class UsabilityTests: XCTestCase {
         let done=row(.finished,at:now)
         for state in [AgentState.working,.needsAttention,.unknown,.idle] {
             for offset in [-1.0,0.0] {
-                var tracker=CompletionTracker()
+                var tracker=baselined(at:now)
                 tracker.ingest([done],at:now)
                 tracker.ingest([row(state,at:now.addingTimeInterval(offset))],at:now)
                 XCTAssertEqual(tracker.pending,[CompletionRecord(done)],"\(state) at offset \(offset) is not newer activity")
@@ -79,7 +79,7 @@ final class UsabilityTests: XCTestCase {
         let now=Date(timeIntervalSince1970:1000000)
         let done=row(.finished,at:now)
         for state in [AgentState.working,.needsAttention,.unknown,.idle] {
-            var tracker=CompletionTracker()
+            var tracker=baselined(at:now)
             tracker.ingest([done],at:now)
             var offline=row(state,at:now.addingTimeInterval(1))
             offline.connected=false
@@ -90,7 +90,7 @@ final class UsabilityTests: XCTestCase {
     func testSupersededCompletionCannotReplayAfterReloadButNewCompletionAppears() throws {
         let now=Date(timeIntervalSince1970:1000000)
         for state in [AgentState.unknown,.idle] {
-            var tracker=CompletionTracker()
+            var tracker=baselined(at:now)
             let oldDone=row(.finished,at:now)
             tracker.ingest([oldDone],at:now)
             tracker.ingest([row(state,at:now.addingTimeInterval(1))],at:now.addingTimeInterval(1))
@@ -122,6 +122,11 @@ final class UsabilityTests: XCTestCase {
         XCTAssertNil(old.drives);XCTAssertEqual(old.diskFreeBytes,100)
         let new=try JSONDecoder().decode(SystemReading.self,from:Data("{\"drives\":[{\"id\":\"/Volumes/Archive\",\"name\":\"Archive\",\"mountPoint\":\"/Volumes/Archive\",\"freeBytes\":700,\"totalBytes\":1000}]}".utf8))
         XCTAssertEqual(new.drives?.first?.id,"/Volumes/Archive");XCTAssertEqual(new.drives?.first?.freeBytes,700)
+    }
+    private func baselined(at now:Date) -> CompletionTracker {
+        var tracker=CompletionTracker()
+        tracker.ingest([row(.idle,at:now.addingTimeInterval(-60),id:"baseline")],at:now.addingTimeInterval(-60))
+        return tracker
     }
     private func row(_ state:AgentState,at date:Date,id:String="same") -> SessionRow {
         SessionRow(hostID:"host",hostName:"Host",session:AgentSession(id:id,provider:"codex",title:"Task",project:"project",state:state,updatedAt:date))
