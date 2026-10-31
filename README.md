@@ -15,6 +15,15 @@ One custom 1280 × 720 layout: Codex and Claude Code sessions across machines on
 - **Use the space you have:** adaptive compact layouts, optional grid snapping, adjustable text size, and fullscreen presentation.
 - **Make it interactive:** open a chosen app or link from each widget, with separate playback and Review controls.
 
+## Releases
+
+**[Wokintosh 1.0.0](https://github.com/anandman/wokintosh/releases/tag/v1.0.0)**
+
+- [Download the signed and notarized macOS app (DMG)](https://github.com/anandman/wokintosh/releases/download/v1.0.0/Wokintosh-1.0.0-macOS-arm64.dmg)
+- [Download the macOS / Linux agent collector](https://github.com/anandman/wokintosh/releases/download/v1.0.0/wokintosh-agent-1.0.0.zip)
+- [SHA-256 checksums](https://github.com/anandman/wokintosh/releases/download/v1.0.0/Wokintosh-1.0.0-SHA256SUMS.txt)
+- [All releases](https://github.com/anandman/wokintosh/releases)
+
 ## Install on the display Mac
 
 1. Move **Wokintosh.app** to Applications and open it. Requires an Apple silicon Mac running macOS 14 or later.
