@@ -38,8 +38,8 @@ struct CalendarWidget:View {
                 VStack(alignment:.leading,spacing:6) {
                     WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled) {
                         VStack(alignment:.leading,spacing:6) {
-                            if g.size.height>100 {Text(store.native.calendar.authorized ? "No upcoming events" : "Calendar").font(retroFont(27*t))}
-                            Text(store.native.calendar.authorized ? "No events match this widget’s selection" : store.native.calendar.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>100 ? 2 : 1)
+                            if g.size.height>100 {Text(store.native.calendarLoading ? "Loading Calendar…" : (store.native.calendarDataState == .ready ? "No upcoming events" : "Calendar")).font(retroFont(27*t))}
+                            Text(store.native.calendarDataState == .ready ? "No events match this widget’s selection" : store.native.calendar.status).font(retroFont(20*t,bold:false)).lineLimit(g.size.height>100 ? 2 : 1)
                         }.frame(maxWidth:.infinity,alignment:.leading)
                     }
                     if !store.native.calendar.authorized && g.size.height>85 {Button("Source settings…"){store.openSettings(.connections)}.buttonStyle(.bordered)}
