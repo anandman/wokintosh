@@ -4,9 +4,10 @@ import SwiftUI
 
 /// Menu controls stay in the dashboard's canvas and window, including while presented.
 struct DashboardMenu: NSViewRepresentable {
+    @ObservedObject var updates:UpdateController
     var openSettings:()->Void
-    func makeNSView(context:Context)->MenuView {MenuView(openSettings:openSettings)}
-    func updateNSView(_ view:MenuView,context:Context) {view.openSettings=openSettings}
+    func makeNSView(context:Context)->MenuView {MenuView(openSettings:openSettings,checkForUpdates:{updates.checkForUpdates()})}
+    func updateNSView(_ view:MenuView,context:Context) {view.openSettings=openSettings;view.checkForUpdates={updates.checkForUpdates()};view.updateAction(title:updates.menuTitle,enabled:updates.canCheckForUpdates)}
     static func dismantleNSView(_ view:MenuView,coordinator:()) {view.detach()}
 
     @MainActor final class MenuView:NSView {
@@ -19,12 +20,14 @@ struct DashboardMenu: NSViewRepresentable {
         private var selection:Int?
         private weak var previousResponder:NSResponder?
         private weak var attachedWindow:DashboardWindow?
+        var checkForUpdates:()->Void
         var openSettings:()->Void
         override var isFlipped:Bool {true}
         override var acceptsFirstResponder:Bool {true}
 
-        init(openSettings:@escaping ()->Void) {
+        init(openSettings:@escaping ()->Void,checkForUpdates:@escaping ()->Void = {}) {
             self.openSettings=openSettings
+            self.checkForUpdates=checkForUpdates
             super.init(frame:.zero)
             trigger.setButtonType(.pushOnPushOff)
             trigger.image=ColorStripeMark.image
@@ -34,14 +37,14 @@ struct DashboardMenu: NSViewRepresentable {
             trigger.setAccessibilityRole(.menuButton)
             trigger.setAccessibilityLabel("Wokintosh menu")
             trigger.setAccessibilityExpanded(false)
-            trigger.toolTip="Dashboard settings and Quit Wokintosh"
+            trigger.toolTip="Settings, updates and Quit Wokintosh"
             addSubview(trigger)
             panel.isHidden=true
             panel.setAccessibilityElement(true)
             panel.setAccessibilityRole(.menu)
             panel.setAccessibilityLabel("Wokintosh menu")
             addSubview(panel)
-            for (index,title,shortcut) in [(0,"Dashboard & Settings…","⌘,"),(1,"Quit Wokintosh","⌘Q")] {
+            for (index,title,shortcut) in [(0,"Dashboard & Settings…","⌘,"),(1,"Check for Updates…",""),(2,"Quit Wokintosh","⌘Q")] {
                 let row=MenuRow(title:title,target:self,action:#selector(chooseRow(_:)))
                 row.tag=index;row.shortcut=shortcut
                 row.setButtonType(.momentaryPushIn);row.isBordered=false
@@ -57,9 +60,15 @@ struct DashboardMenu: NSViewRepresentable {
         override func layout() {
             super.layout()
             trigger.frame=NSRect(x:16,y:6.5,width:25,height:25)
-            panel.frame=NSRect(x:16,y:37,width:348,height:86)
-            rows[0].frame=NSRect(x:2,y:3,width:344,height:36)
-            rows[1].frame=NSRect(x:2,y:47,width:344,height:36)
+            panel.frame=NSRect(x:16,y:37,width:348,height:122)
+            for (index,row) in rows.enumerated() {
+                row.frame=NSRect(x:2,y:3+CGFloat(index)*36+(index==2 ? 8 : 0),width:344,height:36)
+            }
+        }
+        func updateAction(title:String,enabled:Bool) {
+            rows[1].title=title;rows[1].isEnabled=enabled
+            rows[1].setAccessibilityLabel(title)
+            rows[1].needsDisplay=true
         }
         override func hitTest(_ point:NSPoint)->NSView? {
             let local=convert(point,from:superview)
@@ -128,8 +137,9 @@ struct DashboardMenu: NSViewRepresentable {
         }
         @objc private func chooseRow(_ sender:NSButton) {choose(sender.tag)}
         private func choose(_ index:Int) {
+            guard rows.indices.contains(index),rows[index].isEnabled else{return}
             setOpen(false)
-            if index==0 {openSettings()} else {NSApp.terminate(nil)}
+            switch index {case 0:openSettings();case 1:checkForUpdates();default:NSApp.terminate(nil)}
         }
     }
 
@@ -146,7 +156,7 @@ struct DashboardMenu: NSViewRepresentable {
             NSColor(calibratedWhite:0.965,alpha:1).setFill();bounds.fill()
             NSColor.black.setStroke()
             let border=NSBezierPath(rect:bounds.insetBy(dx:0.75,dy:0.75));border.lineWidth=1.5;border.stroke()
-            NSColor.gray.setFill();NSRect(x:8,y:42,width:bounds.width-16,height:1).fill()
+            NSColor.gray.setFill();NSRect(x:8,y:78,width:bounds.width-16,height:1).fill()
         }
     }
     final class MenuRow:MenuButton {
@@ -162,7 +172,7 @@ struct DashboardMenu: NSViewRepresentable {
         override func draw(_ dirtyRect:NSRect) {
             let highlighted=selected || (cell?.isHighlighted ?? false)
             if highlighted {NSColor(calibratedRed:0.37,green:0.32,blue:0.91,alpha:1).setFill();bounds.fill()}
-            let attributes:[NSAttributedString.Key:Any]=[.font:NSFont(name:"Geneva-Bold",size:20) ?? NSFont.boldSystemFont(ofSize:20),.foregroundColor:highlighted ? NSColor.white : NSColor.black]
+            let attributes:[NSAttributedString.Key:Any]=[.font:NSFont(name:"Geneva-Bold",size:20) ?? NSFont.boldSystemFont(ofSize:20),.foregroundColor:!isEnabled ? NSColor.gray : (highlighted ? NSColor.white : NSColor.black)]
             let label=title as NSString,key=shortcut as NSString
             let labelSize=label.size(withAttributes:attributes),keySize=key.size(withAttributes:attributes)
             label.draw(at:NSPoint(x:10,y:(bounds.height-labelSize.height)/2),withAttributes:attributes)

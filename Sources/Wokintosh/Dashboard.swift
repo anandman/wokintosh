@@ -31,7 +31,7 @@ struct DashboardCanvas: View {
             }
             .frame(width:1280,height:720)
             .background(Color.retroDesktop)
-            .overlay { DashboardMenu {store.openSettings(.widgets)} }
+            .overlay { DashboardMenu(updates:store.updates) {store.openSettings(.widgets)} }
             .scaleEffect(scale,anchor:.topLeading)
             .frame(width:1280*scale,height:720*scale,alignment:.topLeading)
             .position(x:geometry.size.width/2,y:geometry.size.height/2)
@@ -43,6 +43,7 @@ struct DashboardCanvas: View {
             Color.clear.frame(width:25,height:25)
             Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
+            UpdateReminder(updates:store.updates)
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
             if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) disconnected").font(barFont(16)).foregroundStyle(.orange) }
             Spacer()
@@ -114,5 +115,17 @@ struct PlacedWidget: View {
             return CalendarWidgetLayout(width:frame.width*canvasSize.width,height:max(0,frame.height*canvasSize.height-29.5),textScale:store.document.textScale,eventCount:store.calendarEvents(for:widget).count,nextEventOnly:false).suffix
         }
         return widget.kind == .system ? store.system(for:widget).0 : ""
+    }
+}
+
+private struct UpdateReminder: View {
+    @ObservedObject var updates: UpdateController
+    var body: some View {
+        if updates.state.availableVersion != nil {
+            Button { updates.checkForUpdates() } label: {
+                Image(systemName:"arrow.down.circle.fill").font(.system(size:20))
+            }.buttonStyle(.plain).disabled(!updates.canCheckForUpdates)
+                .help("Wokintosh update available").accessibilityLabel("Wokintosh update available")
+        }
     }
 }
