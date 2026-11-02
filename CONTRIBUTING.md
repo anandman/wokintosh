@@ -14,6 +14,7 @@ git clone https://github.com/anandman/wokintosh.git
 cd wokintosh
 swift test --scratch-path /private/tmp/wokintosh-build
 python3 -m unittest discover -s collector/tests -v
+python3 -m unittest discover -s script/tests -v
 script/build_and_run.sh --build-only
 ```
 
@@ -35,7 +36,7 @@ Sample data is labeled PREVIEW. Do not grant real Music or Calendar access, inst
 - `collector/wokintosh_agent.py`: portable macOS/Linux collector, with tests under `collector/tests/`.
 - `script/`: build, development packaging and signed release workflows.
 
-There are no third-party runtime dependencies. Keep the collector compatible with Python 3.10 and both macOS and Linux. Preserve existing layouts, collector protocol compatibility, hook configurations and state when upgrading.
+The macOS app pins Sparkle 2.10.1 for updates; SwiftPM verifies its binary artifact checksum. The full upstream license is included in app resources. Development builds embed the framework but do not enable update checks. Keep the collector compatible with Python 3.10 and both macOS and Linux. Preserve existing layouts, collector protocol compatibility, hook configurations and state when upgrading.
 
 ## Changes and validation
 
@@ -51,4 +52,8 @@ Explain the concrete problem, what users see after the change, and how you verif
 
 ## Releases
 
-`script/package.sh` makes an ad hoc development ZIP. `script/release.sh` requires a Developer ID Application signing identity and a saved notarytool keychain profile; it produces signed, notarized and stapled release artifacts without publishing them. Never commit signing credentials, private keys or notarization secrets. Versions are set in `script/version.sh`.
+`script/package.sh` makes an ad hoc development ZIP. `script/release.sh` requires a Developer ID Application signing identity and a saved notarytool keychain profile; it produces signed, notarized and stapled release artifacts without publishing them. Never commit signing credentials, private keys or notarization secrets. Versions are set in `script/version.sh`; increment both the display version and build number for each release. The signed release workflow embeds Sparkle, signs nested helpers inside-out, and enables release-only update metadata. It then signs and validates the final DMG and appcast using the Wokintosh keychain account from `script/update_config.sh`. The committed key is public; keep the private signing key in Keychain and arrange a secure backup outside this repository. Never regenerate the key for an ordinary release.
+
+Publish the DMG, collector ZIP, release notes, checksums, and **`appcast.xml`** together on the matching `v<version>` GitHub release. Prepare a draft, upload and verify all assets, then publish it as latest. The stable feed URL is `https://github.com/anandman/wokintosh/releases/latest/download/appcast.xml`; Sparkle downloads the versioned DMG linked by that feed. `dist/Wokintosh-<version>-appcast.xml` preserves a copy of each feed; upload that copy with the asset filename `appcast.xml`. Do not edit a signed appcast or modify an archive after signing. `script/make_appcast.sh` generates the feed and `script/validate_update.py` checks app/version/URL/size/key agreement plus both EdDSA signatures. No separate website or API token is required by installed apps.
+
+Before publishing updater changes, test an update between isolated owned app copies and profiles. Keep the regular installed dashboard and macOS permissions untouched. Confirm failed downloads/signatures leave the installed copy usable, and test the Dock-hidden menu path. The remote Python collector is updated separately through Machines; updating the dashboard app does not run remote installation commands.

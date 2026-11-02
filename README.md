@@ -12,6 +12,8 @@ Drag Wokintosh to Applications and open it. **Click the Mac icon at the top righ
 
 Widgets can be resized and duplicated independently, with their own content and optional app/link actions. Completed agents stay highlighted Done until reviewed; Blocked goals remain visible so unfinished work is not forgotten.
 
+Wokintosh checks for updates automatically and can download them in the background, installing when you quit. Use **Settings → Updates** or **Check for Updates** in the rainbow menu to install and relaunch sooner. Versions before 1.1 need one final manual installation.
+
 ## Remote agent machines
 
 Wokintosh shows individual Codex and Claude Code sessions across machines over SSH.
