@@ -6,6 +6,7 @@ let package = Package(
     targets: [
         .target(name: "WokintoshCore"),
         .executableTarget(name: "Wokintosh", dependencies: ["WokintoshCore"], resources: [.process("Resources")]),
-        .testTarget(name: "WokintoshCoreTests", dependencies: ["WokintoshCore"])
+        .testTarget(name: "WokintoshCoreTests", dependencies: ["WokintoshCore"]),
+        .testTarget(name: "WokintoshTests", dependencies: ["Wokintosh", "WokintoshCore"])
     ], swiftLanguageModes: [.v5]
 )

@@ -120,7 +120,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         selectedID = widget.id
     }
     func configure(_ id:UUID) { selectedID=id;openSettings(.widgets) }
-    func openSettings(_ tab:SettingsTab) { settingsTab=tab;showSettings?();Task { await native.refreshConnectionStatus() } }
+    func openSettings(_ tab:SettingsTab) { settingsTab=tab;native.refreshCalendarAuthorization();showSettings?() }
+    func refreshSourceConnections() {
+        native.refreshCalendarAuthorization()
+        Task { await native.refreshConnectionStatus() }
+    }
     func activateWidget(_ id:UUID,provider:String?=nil) {
         guard !document.previewMode else {return}
         testWidgetAction(id,provider:provider)
@@ -241,6 +245,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var collectorURL: URL? { Bundle.main.url(forResource: "wokintosh_agent", withExtension: "py") }
 
     func refresh() async {
+        native.refreshCalendarAuthorization()
         guard !refreshing else { return }
         refreshing=true
         defer { refreshing=false }

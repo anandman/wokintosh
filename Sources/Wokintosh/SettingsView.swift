@@ -16,6 +16,9 @@ struct SettingsView: View {
             DisplaySettingsView(store: store)
                 .tabItem { Label("Display", systemImage: "display") }.tag(SettingsTab.display)
         }
+        .onChange(of: store.settingsTab) { _, tab in
+            if tab == .connections { store.refreshSourceConnections() }
+        }
         .padding(16)
         .frame(minWidth: 1050, minHeight: 720)
     }
