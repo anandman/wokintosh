@@ -32,6 +32,10 @@ The initial collector bounds discovery to recent files and caches unchanged pars
 
 ## Blocked goals
 
+On Codex versions with a supported local goal store, the collector checks goal identities and statuses read-only on each refresh. Changes made in Codex’s UI—including deletion, completion and replacement with a new goal—are reflected without waiting for a hook. Goal objectives are not queried or stored. Update the collector on every remote machine through **Machines → Install / Update over SSH** to enable this behavior there; existing hook settings are preserved.
+
+A missing, busy, unreadable or unfamiliar goal store is treated as unknown, so it cannot erase an unfinished goal. Explicit statuses published with `goal-status` and manual dashboard annotations remain independent. Pre-1.0.1 markers have no origin label: a matching current Codex goal can establish that association, but an old marker whose goal was already deleted is retained conservatively. If needed, clear that one obsolete collector marker with `wokintosh-agent goal-status --provider codex --session-id <session-id> --status active`; this changes Wokintosh’s cached status, not the Codex goal.
+
 
 **Blocked** is an unfinished-goal state, separate from a completed turn. It stays visible beyond recent transcript history, across restarts, and while a previously connected machine is offline. Real permission/input requests take priority. The row stays compact; details are available in help/settings.
 
@@ -41,7 +45,7 @@ Right-click a session to **Mark Blocked**; **Clear Manual Blocked** removes only
 wokintosh-agent goal-status --provider codex --session-id <session-id> --status blocked --title "Release testing" --project sample-project
 ```
 
-Use `--provider claude` for Claude Code. Publish `--status active` or `--status complete` when the goal is unblocked. Recognized successful direct Codex goal-tool output can supply this automatically when exposed by the client. Existing historical goals and clients without structured goal output need explicit registration or manual marking; Wokintosh does not guess from final-response wording. Claude idle reminders do not count as blocked or as requests for input.
+Use `--provider claude` for Claude Code. Publish `--status active` or `--status complete` when the goal is unblocked. Supported Codex goal metadata and recognized successful goal-tool output supply automatic status. Clients without either source need explicit registration or manual marking; Wokintosh does not guess from final-response wording. Explicit CLI statuses are cleared by publishing `active` or `complete`. Claude idle reminders do not count as blocked or as requests for input.
 
 ## Manual collector installation
 
