@@ -15,11 +15,9 @@ COLLECTOR_NAME="wokintosh-agent-${WOKINTOSH_VERSION}"
 COLLECTOR_ZIP="$RELEASE_STAGE/$COLLECTOR_NAME.zip"
 # Validate the saved profile before starting the build. No credentials are printed.
 xcrun notarytool history --keychain-profile "$WOKINTOSH_NOTARY_PROFILE" --output-format json > /dev/null
-WOKINTOSH_STAGE_DIR="$RELEASE_STAGE" WOKINTOSH_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
+WOKINTOSH_ENABLE_UPDATES=1 WOKINTOSH_STAGE_DIR="$RELEASE_STAGE" WOKINTOSH_CONFIGURATION=release "$ROOT_DIR/script/build_and_run.sh" --build-only
 [[ "$(lipo -archs "$APP/Contents/MacOS/Wokintosh")" == arm64 ]]
-# The resource bundle contains data only; the app has no nested executable code.
-codesign --force --sign "$WOKINTOSH_SIGNING_IDENTITY" --options runtime --timestamp \
-    --entitlements "$ROOT_DIR/script/Wokintosh.entitlements" "$APP"
+"$ROOT_DIR/script/sign_app.sh" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 codesign -d --entitlements - --xml "$APP" > "$RELEASE_STAGE/signed-entitlements.plist" 2>/dev/null
 python3 - "$RELEASE_STAGE/signed-entitlements.plist" <<'PY'
@@ -67,9 +65,12 @@ xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 hdiutil verify "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+"$ROOT_DIR/script/make_appcast.sh" "$APP" "$DMG" "$RELEASE_STAGE/feed"
 mkdir -p "$ROOT_DIR/dist"
+cp "$RELEASE_STAGE/feed/appcast.xml" "$ROOT_DIR/dist/appcast.xml"
+cp "$RELEASE_STAGE/feed/appcast.xml" "$ROOT_DIR/dist/Wokintosh-${WOKINTOSH_VERSION}-appcast.xml"
 cp "$DMG" "$COLLECTOR_ZIP" "$ROOT_DIR/dist/"
 cp "$ROOT_DIR/RELEASE_NOTES.md" "$ROOT_DIR/dist/Wokintosh-${WOKINTOSH_VERSION}-release-notes.md"
 (cd "$ROOT_DIR/dist" && shasum -a 256 "$NAME.dmg" "$COLLECTOR_NAME.zip" \
-    "Wokintosh-${WOKINTOSH_VERSION}-release-notes.md" > "Wokintosh-${WOKINTOSH_VERSION}-SHA256SUMS.txt")
+    "Wokintosh-${WOKINTOSH_VERSION}-release-notes.md" appcast.xml > "Wokintosh-${WOKINTOSH_VERSION}-SHA256SUMS.txt")
 printf 'Validated release artifacts: %s/dist/\n' "$ROOT_DIR"

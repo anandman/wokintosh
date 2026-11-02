@@ -13,10 +13,11 @@ import SwiftUI
         withExtendedLifetime(delegate) {}
     }
 }
-@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
     let store=DashboardStore()
     var dashboard: DashboardWindow?
     var settings: NSWindow?
+    private var updateMenuItem: NSMenuItem?
     private var pendingMessages:[AppMessage]=[]
     private var activeMessage:AppMessage?
     private let disconnectedDisplayMessage=AppMessage(title:"Display Disconnected",message:"Choose a connected presentation display in Display settings.")
@@ -36,6 +37,7 @@ import SwiftUI
     private var dockPreferenceSubscription:AnyCancellable?
     private var nativeFullscreenSubscription:AnyCancellable?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        store.updates.start()
         makeMenu()
         observeDisplayPreferences()
         store.showEditor = { [weak self] in self?.openEditor() }
@@ -93,8 +95,10 @@ import SwiftUI
     func makeMenu() {
         let menu=NSMenu()
         let appItem=NSMenuItem(); menu.addItem(appItem)
-        let appMenu=NSMenu(); appItem.submenu=appMenu
+        let appMenu=NSMenu(); appItem.submenu=appMenu; appMenu.delegate=self
         appMenu.addItem(withTitle:"About Wokintosh",action:#selector(NSApplication.orderFrontStandardAboutPanel(_:)),keyEquivalent:"")
+        updateMenuItem=appMenu.addItem(withTitle:"Check for Updates…",action:#selector(checkForUpdatesAction),keyEquivalent:"")
+        updateMenuItem?.target=self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle:"Dashboard & Settings…",action:#selector(settingsAction),keyEquivalent:",").target=self
         let layoutEditor=appMenu.addItem(withTitle:"Edit Dashboard…",action:#selector(editorAction),keyEquivalent:"l")
@@ -107,6 +111,11 @@ import SwiftUI
         let editItem=NSMenuItem();menu.addItem(editItem); let edit=NSMenu(title:"Edit");editItem.submenu=edit
         for (title,selector,key) in [("Undo",Selector(("undo:")),"z"),("Cut",#selector(NSText.cut(_:)),"x"),("Copy",#selector(NSText.copy(_:)),"c"),("Paste",#selector(NSText.paste(_:)),"v"),("Select All",#selector(NSText.selectAll(_:)),"a")] { edit.addItem(withTitle:title,action:selector,keyEquivalent:key) }
         NSApp.mainMenu=menu
+    }
+    @objc func checkForUpdatesAction() { store.updates.checkForUpdates() }
+    func menuNeedsUpdate(_ menu:NSMenu) { updateMenuItem?.title=store.updates.menuTitle }
+    func validateMenuItem(_ menuItem:NSMenuItem)->Bool {
+        menuItem.action == #selector(checkForUpdatesAction) ? store.updates.canCheckForUpdates : true
     }
     @objc func settingsAction() { store.openSettings(store.settingsTab) }
     @objc func editorAction() { openEditor() }
