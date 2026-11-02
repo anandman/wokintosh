@@ -15,6 +15,8 @@ struct SettingsView: View {
                 .tabItem { Label("Machines", systemImage: "desktopcomputer") }.tag(SettingsTab.machines)
             DisplaySettingsView(store: store)
                 .tabItem { Label("Display", systemImage: "display") }.tag(SettingsTab.display)
+            UpdateSettingsView(updates: store.updates)
+                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag(SettingsTab.updates)
         }
         .onChange(of: store.settingsTab) { _, tab in
             if tab == .connections { store.refreshSourceConnections() }

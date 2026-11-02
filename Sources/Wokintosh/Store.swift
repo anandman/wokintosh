@@ -6,9 +6,9 @@ import WokintoshCore
 typealias DashboardWidget = WokintoshCore.Widget
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case widgets, connections, machines, display
+    case widgets, connections, machines, display, updates
     var id:String { rawValue }
-    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .display:return "Display" } }
+    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .display:return "Display";case .updates:return "Updates" } }
 }
 
 @MainActor final class DashboardStore: ObservableObject {
@@ -23,6 +23,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var startupMessage: AppMessage?
     private var lastSaveError: String?
     let native = NativeSources()
+    let updates = UpdateController()
     let dataDirectory: URL
     private var layoutNeedsBackup=false
     private var saveTask: Task<Void, Never>?
