@@ -78,14 +78,15 @@ struct UpdateState: Equatable {
     func setAutomaticallyDownloads(_ enabled: Bool) {}
 }
 
-@MainActor private final class SparkleUpdateDriver: NSObject, UpdateDriving, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
+@MainActor final class SparkleUpdateDriver: NSObject, UpdateDriving, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     private var controller: SPUStandardUpdaterController!
     private var observations: [NSKeyValueObservation] = []
     private var availableVersion: String?
     private var readyVersion: String?
     private var issue: String?
     var onChange: (() -> Void)?
-    private var updater: SPUUpdater { controller.updater }
+    var sparkleUpdater: SPUUpdater { controller.updater }
+    private var updater: SPUUpdater { sparkleUpdater }
     var state: UpdateState {
         UpdateState(canCheck: updater.canCheckForUpdates,
                     automaticallyChecks: updater.automaticallyChecksForUpdates,
@@ -115,6 +116,14 @@ struct UpdateState: Equatable {
 
     // Sparkle documents its standard UI callbacks as main-thread-only; its
     // Objective-C user-driver protocol does not yet annotate that isolation.
+    func updater(_ updater: SPUUpdater, userDidMake choice: SPUUserUpdateChoice, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        if choice == .skip {
+            // Sparkle cancels a prepared installer when the user skips the update.
+            readyVersion = nil
+            availableVersion = nil
+            onChange?()
+        }
+    }
     var supportsGentleScheduledUpdateReminders: Bool { true }
     func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool {
         // Scheduled alerts are represented by the visible dashboard/menu/Settings reminder.
@@ -142,6 +151,12 @@ struct UpdateState: Equatable {
             issue = nil
             availableVersion = nil
         } else {
+            if error.domain == SUSparkleErrorDomain && (4000..<5000).contains(error.code) {
+                // Installation-phase failures invalidate readiness; a transient
+                // feed/download error must not discard an already prepared update.
+                readyVersion = nil
+                availableVersion = nil
+            }
             issue = error.localizedDescription
         }
         onChange?()

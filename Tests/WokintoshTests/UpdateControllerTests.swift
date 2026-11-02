@@ -1,4 +1,5 @@
 import XCTest
+import Sparkle
 @testable import Wokintosh
 
 final class UpdateControllerTests: XCTestCase {
@@ -67,6 +68,38 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertEqual(controller.menuTitle, "Check for Updates…")
     }
 
+    @MainActor func testSkippingPreparedUpdateClearsReminderButDismissKeepsInstallOnQuit() {
+        let driver = SparkleUpdateDriver()
+        let controller = UpdateController(driver: driver)
+        // Starting Sparkle would access network/defaults. Exercise its actual delegate
+        // callbacks without starting it; these are the production reminder boundaries.
+        let item = SUAppcastItem(dictionary: ["title": "Version 1.2.0", "sparkle:version": "14", "sparkle:shortVersionString": "1.2.0", "enclosure": ["url": "https://example.org/Wokintosh.dmg", "length": "123", "type": "application/octet-stream"]], relativeTo: nil, failureReason: nil)!
+        let state = SPUUserUpdateState(coder: PreparedUpdateDecoder())!
+        _ = driver.updater(driver.sparkleUpdater, willInstallUpdateOnQuit: item, immediateInstallationBlock: {})
+        XCTAssertTrue(controller.state.readyToInstall)
+        driver.updater(driver.sparkleUpdater, userDidMake: .dismiss, forUpdate: item, state: state)
+        driver.standardUserDriverWillFinishUpdateSession()
+        XCTAssertTrue(controller.state.readyToInstall)
+        XCTAssertEqual(controller.state.availableVersion, "1.2.0")
+        driver.updater(driver.sparkleUpdater, userDidMake: .skip, forUpdate: item, state: state)
+        driver.standardUserDriverWillFinishUpdateSession()
+        XCTAssertFalse(controller.state.readyToInstall)
+        XCTAssertNil(controller.state.availableVersion)
+        XCTAssertEqual(controller.menuTitle, "Check for Updates…")
+    }
+
+    @MainActor func testInstallationFailureClearsPreparedReminderWhileNetworkFailureKeepsIt() {
+        for code in [4005, 4007, 2001] {
+            let driver = SparkleUpdateDriver()
+            let controller = UpdateController(driver: driver)
+            let item = SUAppcastItem(dictionary: ["title": "Version 1.2.0", "sparkle:version": "14", "sparkle:shortVersionString": "1.2.0", "enclosure": ["url": "https://example.org/Wokintosh.dmg", "length": "123", "type": "application/octet-stream"]], relativeTo: nil, failureReason: nil)!
+            _ = driver.updater(driver.sparkleUpdater, willInstallUpdateOnQuit: item, immediateInstallationBlock: {})
+            driver.updater(driver.sparkleUpdater, didAbortWithError: NSError(domain: SUSparkleErrorDomain, code: code, userInfo: [NSLocalizedDescriptionKey: "Controlled failure"]))
+            XCTAssertEqual(controller.state.readyToInstall, code == 2001, "error code \(code)")
+            XCTAssertEqual(controller.state.issue, "Controlled failure")
+        }
+    }
+
     @MainActor func testUnconfiguredBundleCannotScheduleChecksOrShowUpdateUI() {
         let controller = UpdateController(bundle: Bundle(for: Self.self))
         controller.start()
@@ -86,4 +119,11 @@ final class UpdateControllerTests: XCTestCase {
     func checkForUpdates() { checks += 1; state.canCheck = false; onChange?() }
     func setAutomaticallyChecks(_ enabled: Bool) { state.automaticallyChecks = enabled; onChange?() }
     func setAutomaticallyDownloads(_ enabled: Bool) { state.automaticallyDownloads = enabled; onChange?() }
+}
+
+/// Sparkle exposes secure decoding, but no public stage initializer.
+private final class PreparedUpdateDecoder: NSCoder {
+    override var allowsKeyedCoding: Bool { true }
+    override func decodeInteger(forKey key: String) -> Int { SPUUserUpdateStage.installing.rawValue }
+    override func decodeBool(forKey key: String) -> Bool { true }
 }
