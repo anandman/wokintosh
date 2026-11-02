@@ -18,6 +18,10 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/Wokintosh"
 cp "$ROOT_DIR/collector/wokintosh_agent.py" "$APP_BUNDLE/Contents/Resources/wokintosh_agent.py"
 cp "$ROOT_DIR/Sources/Wokintosh/Resources/Wokintosh.icns" "$APP_BUNDLE/Contents/Resources/Wokintosh.icns"
 RESOURCE_BUNDLE="$(dirname "$BUILD_BINARY")/Wokintosh_Wokintosh.bundle"
+source "$ROOT_DIR/script/sparkle.sh"
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+rm -rf "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+ditto "$SPARKLE_FRAMEWORK" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
     rm -rf "$APP_BUNDLE/Contents/Resources/Wokintosh_Wokintosh.bundle"
     cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
@@ -41,6 +45,20 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <key>NSCalendarsFullAccessUsageDescription</key><string>Wokintosh shows your upcoming calendar events when you enable the calendar widget.</string>
 </dict></plist>
 PLIST
+# Only explicit release packaging enables the updater; normal development stays offline.
+if [[ "${WOKINTOSH_ENABLE_UPDATES:-0}" == 1 ]]; then
+    source "$ROOT_DIR/script/update_config.sh"
+    python3 - "$APP_BUNDLE/Contents/Info.plist" "$WOKINTOSH_UPDATE_FEED_URL" "$WOKINTOSH_UPDATE_PUBLIC_KEY" <<'PYUPDATES'
+import base64, plistlib, sys
+path, feed, key = sys.argv[1:]
+assert len(base64.b64decode(key, validate=True)) == 32
+with open(path, 'rb') as f: info = plistlib.load(f)
+info.update(SUFeedURL=feed, SUPublicEDKey=key, SUEnableAutomaticChecks=True,
+            SUAutomaticallyUpdate=True, SURequireSignedFeed=True,
+            SUVerifyUpdateBeforeExtraction=True, SUEnableSystemProfiling=False)
+with open(path, 'wb') as f: plistlib.dump(info, f)
+PYUPDATES
+fi
 # Cloud-synced source resources can carry Finder metadata. Clean only the staged app.
 xattr -cr "$APP_BUNDLE"
 codesign --force --sign - "$APP_BUNDLE"

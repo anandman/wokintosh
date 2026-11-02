@@ -1,4 +1,6 @@
-# Asset and service credits
+# Asset, software and service credits
+
+- Sparkle 2.10.1: https://github.com/sparkle-project/Sparkle, used for signed macOS updates. The full upstream license and bundled-component notices are preserved in [Sparkle-LICENSE.txt](Sources/Wokintosh/Resources/Sparkle-LICENSE.txt) and included in app resources.
 
 - Codex provider icon: copied from the locally installed official OpenAI Codex/ChatGPT application solely for provider identification. OpenAI and Codex marks belong to their respective owners; this app is not affiliated with OpenAI.
 - Claude provider icon: converted from the locally installed official Claude app icon solely for provider identification. Claude and Anthropic marks belong to Anthropic; this app is not affiliated with Anthropic.
