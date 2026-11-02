@@ -1,18 +1,11 @@
-# Wokintosh 1.0.0
+# Wokintosh 1.0.1
 
-A Macintosh Color Classic-style dashboard for a small display, with independently placed and resized widgets. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps) and its 5-inch 1280 × 720 display.
+Fixes stale Blocked status after deleting or changing a Codex goal.
 
-- Individual Codex and Claude Code sessions across Macs and Linux machines, with attention first, durable Blocked states, and Done notices with explicit Review controls.
-- Apple Music playback, color album artwork and optional Apple catalog fallback for missing covers.
-- Calendar agenda with per-widget calendar selections, all-day and title filters, and duplicate availability-block filtering.
-- Per-widget weather locations, clocks, and CPU, memory and multiple drive readings.
-- One Dashboard & Settings workspace with a live layout preview, aligned snapping, and consistent Content / Layout / Actions configuration.
-- Optional app or link actions for each widget and provider-app actions for agent rows. Review remains separate.
-- Fullscreen presentation, readable compact layouts, an optional Dock icon, and an always-accessible dashboard menu with Quit.
-- SSH installation and updates for the companion collector, version-aware Python discovery locally and remotely, and backward-compatible observer-hook migration.
+- Polls supported local Codex goal metadata read-only, so goal deletion and status changes are detected without a new hook event.
+- Keeps genuinely blocked goals visible through completed turns and idle sessions, while preserving explicit manual statuses and uncertain legacy records.
+- Handles renamed sessions and replacement goals by identity. Goal objectives are not read or copied into Wokintosh state.
 
-Requires Apple silicon and macOS 14 or later for the display app. The companion collector requires Python 3.10 or later on macOS or Linux. The app and DMG are Developer ID signed, notarized and stapled.
+Requires Apple silicon and macOS 14 or later for the display app. The companion collector requires Python 3.10 or later on macOS or Linux. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps), with its 5-inch 1280 × 720 display. The app and DMG are Developer ID signed, notarized and stapled.
 
-Upgrading preserves saved layouts, connected machines and collector state. Quit an older running copy before replacing the app. Update remote collectors using Machines → Install / Update over SSH. Optional observer hooks are refreshed separately and may require client restart/resume and Codex trust review.
-
-Known boundaries: widget actions open applications on the display Mac rather than navigating to an exact agent session; blocked goals without structured provider signals require explicit registration or manual marking. The dashboard is not displayed over the macOS lock screen. Updates are installed manually from GitHub releases.
+Quit an older running copy before replacing the app. Your layout and connected machines are preserved. Update remote collectors with **Settings → Machines → Install / Update over SSH** so the fix runs on each agent machine. Existing hook configurations are retained. See [advanced agent setup](https://github.com/anandman/wokintosh/blob/main/docs/ADVANCED.md) for supported goal metadata and legacy-state behavior.

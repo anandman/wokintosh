@@ -13,6 +13,10 @@ import re
 import shlex
 import shutil
 import socket
+try:
+    import sqlite3
+except ImportError:
+    sqlite3 = None  # Some portable Python builds omit the optional SQLite module.
 import subprocess
 import sys
 import tempfile
@@ -36,6 +40,8 @@ MAX_HOOK_EVENTS = 64
 HOOK_STATE_VERSION = 1
 MAX_GOAL_MARKERS = 512
 MAX_GOAL_MARKER_BYTES = 4096
+CODEX_BLOCKED_STATUSES = {'blocked', 'paused', 'usage_limited', 'budget_limited'}
+CODEX_GOAL_STATUSES = CODEX_BLOCKED_STATUSES | {'active', 'complete'}
 
 
 def stamp(value):
@@ -653,6 +659,138 @@ def save_parse_cache(path, entries):
         pass  # A cache write failure must not hide otherwise readable sessions.
 
 
+
+def read_codex_goals(home):
+    """A complete, bounded metadata observation, or None when absence is unproven."""
+    path = home / '.codex/goals_1.sqlite'
+    if sqlite3 is None:
+        return None
+    connection = None
+    deadline = time.monotonic() + 0.15
+    try:
+        if not path.is_file():
+            return None
+        # mode=ro must see committed WAL changes; immutable=1 would silently miss them.
+        connection = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True,
+                                     timeout=0.05, isolation_level=None)
+        connection.set_progress_handler(lambda: time.monotonic() > deadline, 1000)
+        connection.execute('PRAGMA query_only=ON')
+        connection.execute('BEGIN')
+        kind = connection.execute("SELECT type FROM sqlite_master WHERE name='thread_goals'").fetchone()
+        if kind != ('table',):
+            return None
+        columns = {row[1]: row[2].upper() for row in connection.execute('PRAGMA table_info(thread_goals)')}
+        required = {'thread_id': 'TEXT', 'goal_id': 'TEXT', 'status': 'TEXT',
+                    'created_at_ms': 'INTEGER', 'updated_at_ms': 'INTEGER'}
+        if any(columns.get(name) != kind for name, kind in required.items()):
+            return None
+        # SQL bounds text before it crosses into Python, including malformed huge IDs.
+        query = """SELECT
+            CASE WHEN typeof(thread_id)='text' AND length(thread_id) BETWEEN 1 AND 180
+                 AND length(CAST(thread_id AS BLOB))<=720 THEN thread_id END,
+            CASE WHEN typeof(goal_id)='text' AND length(goal_id) BETWEEN 1 AND 180
+                 AND length(CAST(goal_id AS BLOB))<=720 THEN goal_id END,
+            CASE WHEN typeof(status)='text' AND length(status)<=32
+                 AND length(CAST(status AS BLOB))<=128 THEN status END,
+            CASE WHEN typeof(created_at_ms)='integer' THEN created_at_ms END,
+            CASE WHEN typeof(updated_at_ms)='integer' THEN updated_at_ms END
+            FROM thread_goals LIMIT ?"""
+        rows = connection.execute(query, (MAX_GOAL_MARKERS + 1,)).fetchall()
+        if len(rows) > MAX_GOAL_MARKERS:
+            return None
+        result = {}
+        for identity, goal_id, status, created, updated in rows:
+            if (not isinstance(identity, str) or not identity.isprintable() or
+                    identity != clean(identity, 180) or not isinstance(goal_id, str) or
+                    not goal_id.isprintable() or goal_id != clean(goal_id, 180) or
+                    status not in CODEX_GOAL_STATUSES or
+                    type(created) is not int or type(updated) is not int or
+                    not 0 <= created <= updated <= 253402300799999 or identity in result):
+                return None
+            result[identity] = {'goalId': goal_id, 'status': status,
+                                'updatedAt': stamp(datetime.fromtimestamp(updated / 1000, timezone.utc))}
+        return result
+    except (OSError, ValueError, OverflowError, sqlite3.Error):
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def load_codex_goal_bindings(path):
+    """Separate provenance survives older observers rewriting a marker's fields."""
+    try:
+        with path.open('rb') as stream:
+            raw = stream.read(MAX_CACHE_BYTES + 1)
+        value = json.loads(raw) if len(raw) <= MAX_CACHE_BYTES else None
+        entries = value.get('goals') if isinstance(value, dict) and value.get('version') == 1 else None
+        if not isinstance(entries, dict) or len(entries) > MAX_GOAL_MARKERS:
+            return {}
+        result = {}
+        for identity, entry in entries.items():
+            if (not isinstance(identity, str) or not identity or identity != clean(identity, 180) or
+                    not isinstance(entry, dict) or not isinstance(entry.get('goalId'), str) or
+                    not entry['goalId'] or entry['goalId'] != clean(entry['goalId'], 180) or
+                    not isinstance(entry.get('updatedAt'), str) or len(entry['updatedAt']) > 50):
+                return {}
+            datetime.fromisoformat(entry['updatedAt'].replace('Z', '+00:00'))
+            result[identity] = {key: entry[key] for key in ('goalId', 'updatedAt')}
+        return result
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def reconcile_codex_goals(sessions, markers, goals, state_dir):
+    """Called under the marker lock; automatic evidence never replaces explicit marks."""
+    binding_path = state_dir / 'codex-goal-bindings.json'
+    previous = load_codex_goal_bindings(binding_path)
+    bindings = dict(previous)
+    for key, (path, marker) in list(markers.items()):
+        if key[0] != 'codex' or marker.get('_goalSource') == 'explicit':
+            continue
+        goal = goals.get(key[1])
+        known = marker.get('_goalSource') == 'codex' or key[1] in bindings
+        if known and (goal is None or goal['status'] not in CODEX_BLOCKED_STATUSES):
+            path.unlink(missing_ok=True)
+            del markers[key]
+    pending = [(identity, goal) for identity, goal in goals.items()
+               if goal['status'] in CODEX_BLOCKED_STATUSES and
+               ('codex', identity) not in markers]
+    # Existing explicit/legacy marks have priority when the shared bounded store is full.
+    available = max(0, MAX_GOAL_MARKERS - len(markers))
+    pending.sort(key=lambda item: item[1]['updatedAt'], reverse=True)
+    eligible = {identity for identity, goal in pending[:available]}
+    for identity, goal in goals.items():
+        if goal['status'] not in CODEX_BLOCKED_STATUSES:
+            continue
+        key = ('codex', identity)
+        old = markers.get(key)
+        if old is not None and old[1].get('_goalSource') == 'explicit':
+            continue
+        if old is None and identity not in eligible:
+            continue
+        current = sessions.get(key)
+        if current is not None:
+            marker = {field: current[field] for field in SESSION_FIELDS if field in current}
+        elif old is not None:
+            marker = dict(old[1])
+        else:
+            marker = base_session(identity, 'codex', '', parse_time(goal['updatedAt'], datetime.now(timezone.utc)))
+        marker.update(state='blocked', activity='Goal blocked', updatedAt=goal['updatedAt'],
+                      _goalSource='codex', _goalId=goal['goalId'])
+        marker.pop('goalBlocked', None)
+        path = goal_marker_path(state_dir, 'codex', identity)
+        if old is None or marker != old[1]:
+            atomic_json(path, marker)
+        markers[key] = (path, marker)
+        bindings[identity] = {field: goal[field] for field in ('goalId', 'updatedAt')}
+    # Keep deletion receipts too: a delayed old helper must not resurrect a known goal.
+    bindings = dict(sorted(bindings.items(), key=lambda item: item[1]['updatedAt'],
+                           reverse=True)[:MAX_GOAL_MARKERS])
+    if bindings != previous:
+        atomic_json(binding_path, {'version': 1, 'goals': bindings})
+
+
 def goal_marker_path(state_dir, provider, identity):
     key = hashlib.sha256((provider + '\0' + identity).encode()).hexdigest()
     return state_dir / 'goals' / (key + '.json')
@@ -664,9 +802,21 @@ def load_goal_marker(path, strict=False):
             data = stream.read(MAX_GOAL_MARKER_BYTES + 1)
         if len(data) > MAX_GOAL_MARKER_BYTES:
             raise ValueError('Goal marker is too large')
-        result = valid_session(json.loads(data))
+        raw = json.loads(data)
+        result = valid_session(raw)
         if result is None or result['state'] != 'blocked':
             raise ValueError('Invalid goal marker')
+        result.pop('goalBlocked', None)
+        source = raw.get('_goalSource')
+        if source is not None:
+            if source not in ('explicit', 'codex') or (source == 'codex' and result['provider'] != 'codex'):
+                raise ValueError('Invalid goal source')
+            result['_goalSource'] = source
+        goal_id = raw.get('_goalId')
+        if goal_id is not None:
+            if not isinstance(goal_id, str) or not goal_id or goal_id != clean(goal_id, 180):
+                raise ValueError('Invalid goal identity')
+            result['_goalId'] = goal_id
         return result
     except (OSError, ValueError, TypeError):
         if strict:
@@ -674,23 +824,27 @@ def load_goal_marker(path, strict=False):
         return None
 
 
-def set_goal_status(state_dir, provider, identity, status, now, title=None, project=None):
+def set_goal_status(state_dir, provider, identity, status, now, title=None, project=None, source='explicit'):
     """Persist only an explicit goal status and small display metadata, never a goal body."""
     if (provider not in ('codex', 'claude') or not isinstance(identity, str) or
             not identity or len(identity) > 180 or identity != clean(identity, 180) or
-            status not in ('blocked', 'stalled', 'paused', 'active', 'complete')):
+            status not in ('blocked', 'stalled', 'paused', 'active', 'complete') or
+            source not in ('explicit', 'codex') or (source == 'codex' and provider != 'codex')):
         raise ValueError('Invalid goal provider, session identity or status')
     path = goal_marker_path(state_dir, provider, identity)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Cross-process status writes and pruning share one bounded store on macOS/Linux.
     with (path.parent / '.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if status in ('active', 'complete'):
-            path.unlink(missing_ok=True)
-            return
         existing = load_goal_marker(path)
+        if source == 'codex' and existing is not None and existing.get('_goalSource') == 'explicit':
+            return
+        if status in ('active', 'complete'):
+            if source == 'explicit' or (existing is not None and existing.get('_goalSource') == 'codex'):
+                path.unlink(missing_ok=True)
+            return
         entry = dict(existing) if existing else base_session(identity, provider, '', now)
-        entry.update(state='blocked', activity='Goal blocked')
+        entry.update(state='blocked', activity='Goal blocked', _goalSource=source)
         if title is not None:
             entry['title'] = clean(title, 90) or entry['title']
         if project is not None:
@@ -722,16 +876,19 @@ def structured_goal_status(provider, event):
         return None
     if response and (response.get('isError') is True or response.get('error') or response.get('success') is False):
         return None
-    goal = response.get('goal', response) if response is not None else None
+    if name in ('get_goal', 'functions.get_goal') and 'goal' in response and response['goal'] is None:
+        return 'complete'  # Verified successful get_goal no-goal envelope, unlike {}.
+    goal = response.get('goal', response)
     status = goal.get('status') if isinstance(goal, dict) else None
     return status if status in ('blocked', 'paused', 'active', 'complete') else None
 
 
-def merge_goal_markers(sessions, state_dir):
+def merge_goal_markers(sessions, state_dir, home=None):
     directory = state_dir / 'goals'
-    if not directory.exists():
+    if not directory.exists() and home is None:
         return set()
     try:
+        directory.mkdir(parents=True, exist_ok=True)
         # Read and classify under the same lock as explicit status writes, so one
         # concurrently cleared marker cannot make unrelated goals disappear.
         with (directory / '.lock').open('a') as lock:
@@ -740,6 +897,7 @@ def merge_goal_markers(sessions, state_dir):
                            reverse=True)[:MAX_GOAL_MARKERS]
             retained = set()
             complete = True
+            markers = {}
             for path in paths:
                 try:
                     marker = load_goal_marker(path, strict=True)
@@ -747,6 +905,13 @@ def merge_goal_markers(sessions, state_dir):
                     complete = False
                     continue
                 key = (marker['provider'], marker['id'])
+                markers[key] = (path, marker)
+            # Read after acquiring the marker lock: a queued hook may have committed
+            # a new goal or cleared an old one while this snapshot was waiting.
+            codex_goals = read_codex_goals(home) if home is not None else None
+            if codex_goals is not None:
+                reconcile_codex_goals(sessions, markers, codex_goals, state_dir)
+            for key, (path, marker) in markers.items():
                 retained.add(key)
                 current = sessions.get(key)
                 if current is not None and (current.get('isHelper') or current.get('parentId')):
@@ -863,7 +1028,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
                     finalize(sessions[key], now)
         except (OSError, ValueError, KeyError, TypeError):
             continue
-    goal_identities = merge_goal_markers(sessions, state_dir)
+    goal_identities = merge_goal_markers(sessions, state_dir, home)
     if goal_identities is None:
         errors.append('Goal status unavailable')
     for key, session in sessions.items():
@@ -1320,7 +1485,7 @@ def ingest_hook(provider, event, home, state_dir, now):
     goal_status = structured_goal_status(provider, event)
     if goal_status is not None:
         set_goal_status(state_dir, provider, identity, goal_status, now,
-                        title=session.get('title'), project=session.get('project'))
+                        title=session.get('title'), project=session.get('project'), source='codex')
 
 
 def main(argv=None):
