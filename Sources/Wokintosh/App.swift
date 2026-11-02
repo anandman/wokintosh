@@ -150,6 +150,7 @@ import SwiftUI
         }
     }
     func openSettings() {
+        store.refreshSourceConnections()
         if let settings { settings.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true);return }
         let window=NSWindow(contentRect:NSRect(x:0,y:0,width:1560,height:920),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
         window.title="Wokintosh — Dashboard & Settings"
@@ -299,7 +300,7 @@ import SwiftUI
         guard store.document.presentationEnabled else{return}
         requestPresentation(on:store.document.displayID,bringToFront:false)
     }
-    func applicationDidBecomeActive(_ notification:Notification) {presentNextMessage()}
+    func applicationDidBecomeActive(_ notification:Notification) {store.refreshSourceConnections();presentNextMessage()}
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool { false }
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows:Bool)->Bool { dashboard?.makeKeyAndOrderFront(nil);return true }
     func windowWillClose(_ notification:Notification) {
