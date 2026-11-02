@@ -5,6 +5,39 @@ import EventKit
 import ImageIO
 import WokintoshCore
 
+protocol CalendarReading: Sendable {
+    func authorizationStatus() -> EKAuthorizationStatus
+    func read(authorizationRevision: UUID) async -> CalendarInfo
+    func requestAccess() async -> CalendarInfo
+}
+
+enum CalendarDataState { case loading, ready, unavailable }
+
+/// A bounded EventKit query result; authorization generation is supplied by its consumer.
+struct CalendarReadCache {
+    private var entry: (info: CalendarInfo, revision: UUID, fetchedAt: Date)?
+    func value(for revision: UUID, at now: Date) -> CalendarInfo? {
+        guard let entry, entry.revision == revision, now.timeIntervalSince(entry.fetchedAt) < 60 else { return nil }
+        return entry.info
+    }
+    mutating func store(_ info: CalendarInfo, revision: UUID, at now: Date) {
+        entry = (info, revision, now)
+    }
+    mutating func invalidate() { entry = nil }
+}
+
+
+private func calendarPermissionInfo(_ status: EKAuthorizationStatus) -> CalendarInfo {
+    switch status {
+    case .fullAccess: return CalendarInfo(status: "Loading Calendar…", authorized: true)
+    case .notDetermined: return CalendarInfo()
+    case .denied: return CalendarInfo(status: "Calendar access denied. Enable it in System Settings → Privacy & Security → Calendars")
+    case .restricted: return CalendarInfo(status: "Calendar access is restricted on this Mac")
+    case .writeOnly: return CalendarInfo(status: "Enable full Calendar access to read upcoming events")
+    @unknown default: return CalendarInfo(status: "Calendar access unavailable")
+    }
+}
+
 /// Permission requests are confined to explicit Connect / Enable actions.
 @MainActor final class NativeSources: ObservableObject {
     @Published var music = NowPlayingInfo()
@@ -13,7 +46,9 @@ import WokintoshCore
     var weather: WeatherInfo { weatherWidgets.first.map { weather(for: $0) } ?? WeatherInfo() }
     @Published private(set) var musicConnected = false
     @Published private(set) var musicConnectionKnown = false
-    @Published var calendar = CalendarInfo()
+    @Published private(set) var calendar = CalendarInfo()
+    @Published private(set) var calendarDataState = CalendarDataState.unavailable
+    var calendarLoading: Bool { calendarDataState == .loading }
     @Published var musicEnabled: Bool {
         didSet {
             defaults.set(musicEnabled, forKey: Self.musicOptInKey)
@@ -39,21 +74,31 @@ import WokintoshCore
     private static let catalogArtworkKey = "wokintosh.catalogArtworkEnabled"
     private let defaults: UserDefaults
     private let musicReader = MusicSource()
-    private let calendarReader = CalendarSource()
+    private let calendarReader: any CalendarReading
+    private let musicPermissionCheck: @Sendable () async -> Bool?
     private let weatherReader = WeatherSource()
     private var musicRefreshing = false
     private var musicReadTask: Task<NowPlayingInfo, Error>?
     private var calendarRefreshing = false
+    private var calendarRefreshPending = false
+    private var calendarAccessRequesting = false
+    private var calendarAuthorization: EKAuthorizationStatus?
     private var musicConnectionRevision = UUID()
     private var calendarConnectionRevision = UUID()
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, calendarReader: (any CalendarReading)? = nil,
+         musicPermissionCheck: (@Sendable () async -> Bool?)? = nil) {
         self.defaults = defaults
+        self.calendarReader = calendarReader ?? CalendarSource()
+        let musicReader = self.musicReader
+        self.musicPermissionCheck = musicPermissionCheck ?? { await musicReader.hasPermission() }
         musicEnabled = defaults.bool(forKey: Self.musicOptInKey)
         musicCatalogArtworkEnabled = defaults.object(forKey: Self.catalogArtworkKey) as? Bool ?? true
+        refreshCalendarAuthorization()
     }
 
     func refresh(document: DashboardDocument) async {
+        refreshCalendarAuthorization()
         let kinds = Set(document.widgets.map(\.kind))
         // Snapshot choices before the first suspension, so later document edits can invalidate them.
         weatherWidgets = document.widgets.filter { $0.kind == .weather }
@@ -70,21 +115,38 @@ import WokintoshCore
         await updateMusic(allowPrompt: true)
     }
 
+    /// Current authorization is independent of EventKit data, Music, remote feeds, and visible widgets.
+    @discardableResult
+    func refreshCalendarAuthorization() -> Bool {
+        let status = calendarReader.authorizationStatus()
+        if calendarAuthorization != status {
+            calendarAuthorization = status
+            calendarConnectionRevision = UUID()
+            // Coalesce changes during an old read into one read of the latest granted generation.
+            calendarRefreshPending = status == .fullAccess && calendarRefreshing
+            calendar = calendarPermissionInfo(status)
+            calendarDataState = status == .fullAccess ? .loading : .unavailable
+        }
+        return status == .fullAccess
+    }
+
     /// Preflight only: opening Settings must never request new permissions or require a visible widget.
     func refreshConnectionStatus() async {
-        let musicRevision = musicConnectionRevision
-        let calendarRevision = calendarConnectionRevision
-        async let calendarInfo = calendarReader.read()
-        let permission = await musicReader.hasPermission()
-        if musicConnectionRevision == musicRevision {
-            musicConnectionKnown = permission != nil
-            if let permission {
-                musicConnected = permission
-                if permission && !musicEnabled { music=NowPlayingInfo(status:"Apple Music reading is off") }
-            }
+        refreshCalendarAuthorization()
+        async let calendarUpdate: Void = refreshCalendarIfVisible(true)
+        async let musicUpdate: Void = refreshMusicConnectionStatus()
+        _ = await (calendarUpdate, musicUpdate)
+    }
+
+    private func refreshMusicConnectionStatus() async {
+        let revision = musicConnectionRevision
+        let permission = await musicPermissionCheck()
+        guard musicConnectionRevision == revision else { return }
+        musicConnectionKnown = permission != nil
+        if let permission {
+            musicConnected = permission
+            if permission && !musicEnabled { music=NowPlayingInfo(status:"Apple Music reading is off") }
         }
-        let info = await calendarInfo
-        if calendarConnectionRevision == calendarRevision { calendar = info }
     }
 
     func weather(for widget: Widget) -> WeatherInfo { weatherState.weather(for: widget) }
@@ -96,11 +158,28 @@ import WokintoshCore
     }
 
     func requestCalendarAccess() async {
-        guard !calendarRefreshing else { return }
+        // A grant may have changed since the button was drawn. Never ask again for an existing grant.
+        if refreshCalendarAuthorization() {
+            await refreshCalendarIfVisible(true)
+            return
+        }
+        guard !calendarAccessRequesting else { return }
+        calendarAccessRequesting = true
         calendarConnectionRevision = UUID()
-        calendarRefreshing = true
-        defer { calendarRefreshing = false }
-        calendar = await calendarReader.requestAccess()
+        let revision = calendarConnectionRevision
+        defer { calendarAccessRequesting = false }
+        let info = await calendarReader.requestAccess()
+        let unchanged = revision == calendarConnectionRevision
+        guard refreshCalendarAuthorization() else {
+            // Preserve an operational failure only while this still-current request has no OS decision.
+            if unchanged, calendarAuthorization == .notDetermined, !info.authorized {
+                calendar = CalendarInfo(status: info.status)
+                calendarDataState = .unavailable
+            }
+            return
+        }
+        if unchanged { applyCalendar(info, revision: calendarConnectionRevision) }
+        else { await refreshCalendarIfVisible(true) }
     }
 
     func performPlayback(_ action: String) async {
@@ -176,10 +255,32 @@ import WokintoshCore
     }
 
     private func refreshCalendarIfVisible(_ visible: Bool) async {
-        guard visible, !calendarRefreshing else { return }
+        guard refreshCalendarAuthorization(), visible, !calendarRefreshing else { return }
         calendarRefreshing = true
         defer { calendarRefreshing = false }
-        calendar = await calendarReader.read()
+        repeat {
+            calendarRefreshPending = false
+            let revision = calendarConnectionRevision
+            if calendarDataState != .ready {
+                calendarDataState = .loading
+                calendar.status = "Loading Calendar…"
+            }
+            let info = await calendarReader.read(authorizationRevision: revision)
+            applyCalendar(info, revision: revision)
+        } while calendarRefreshPending && refreshCalendarAuthorization()
+    }
+
+    private func applyCalendar(_ info: CalendarInfo, revision: UUID) {
+        // Recheck after suspension: old event reads cannot resurrect revoked access or stale events.
+        guard refreshCalendarAuthorization(), revision == calendarConnectionRevision else { return }
+        if info.authorized {
+            calendar = info
+            calendarDataState = .ready
+        } else {
+            // EventKit may have begun this read with an older grant. The current OS grant wins.
+            calendar = CalendarInfo(status: "Calendar access is granted. Event data is unavailable; refresh to try again.", authorized: true)
+            calendarDataState = .unavailable
+        }
     }
 
     private func refreshWeather(requests: [WeatherWidgetRequest]) async {
@@ -499,10 +600,13 @@ private actor MusicSource {
     """#
 }
 
-private actor CalendarSource {
-    private let store = EKEventStore()
-    private var cached: CalendarInfo?
-    private var fetchedAt = Date.distantPast
+private actor CalendarSource: CalendarReading {
+    nonisolated func authorizationStatus() -> EKAuthorizationStatus {
+        EKEventStore.authorizationStatus(for: .event)
+    }
+
+    private lazy var store = EKEventStore()
+    private var cache = CalendarReadCache()
     private var changeObserver: NSObjectProtocol?
 
     deinit {
@@ -518,8 +622,7 @@ private actor CalendarSource {
     }
 
     private func invalidateCache() {
-        cached = nil
-        fetchedAt = .distantPast
+        cache.invalidate()
     }
 
     func requestAccess() async -> CalendarInfo {
@@ -529,24 +632,21 @@ private actor CalendarSource {
             }
             // Explicit Enable refreshes inventory even when no Calendar widget is visible.
             invalidateCache()
-            return read()
+            return read(authorizationRevision: UUID())
         } catch {
             return CalendarInfo(status: "Calendar access unavailable: \(error.localizedDescription)")
         }
     }
 
-    func read() -> CalendarInfo {
-        switch EKEventStore.authorizationStatus(for: .event) {
-        case .fullAccess: break
-        case .notDetermined: return CalendarInfo()
-        case .denied: return CalendarInfo(status: "Calendar access denied. Enable it in System Settings → Privacy & Security → Calendars")
-        case .restricted: return CalendarInfo(status: "Calendar access is restricted on this Mac")
-        case .writeOnly: return CalendarInfo(status: "Enable full Calendar access to read upcoming events")
-        @unknown default: return CalendarInfo(status: "Calendar access unavailable")
+    func read(authorizationRevision: UUID) -> CalendarInfo {
+        let permission = authorizationStatus()
+        guard permission == .fullAccess else {
+            invalidateCache()
+            return calendarPermissionInfo(permission)
         }
         observeStoreChangesIfNeeded()
         let now = Date()
-        if let cached, now.timeIntervalSince(fetchedAt) < 60 { return cached }
+        if let cached = cache.value(for: authorizationRevision, at: now) { return cached }
         let calendars = store.calendars(for: .event).map { calendar in
             CalendarDescriptor(id: calendar.calendarIdentifier, title: calendar.title, sourceTitle: calendar.source.title)
         }.sorted { first, second in
@@ -565,8 +665,7 @@ private actor CalendarSource {
                                          calendarID: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title) }
         // Keep every candidate in this bounded seven-day window; widgets filter before applying their own limits.
         let result = CalendarInfo(events: events, status: events.isEmpty ? "No events in the next 7 days" : "Upcoming · next 7 days", authorized: true, calendars: calendars)
-        cached = result
-        fetchedAt = now
+        cache.store(result, revision: authorizationRevision, at: now)
         return result
     }
 }
