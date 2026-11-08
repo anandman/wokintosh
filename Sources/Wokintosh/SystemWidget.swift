@@ -57,7 +57,7 @@ struct SystemWidget: View {
     private func metric(_ item:MetricReading,t:Double,compact:Bool,columnar:Bool)->some View {
         VStack(alignment:.leading,spacing:(columnar ? 5 : (compact ? 2 : 4))*t) {
             if columnar {
-                HStack(spacing:3) {
+                HStack(spacing:5*t) {
                     Image(systemName:item.symbol).foregroundStyle(item.tint)
                     Text(item.label).lineLimit(1)
                     if !item.qualifier.isEmpty {Text(item.qualifier).fixedSize()}

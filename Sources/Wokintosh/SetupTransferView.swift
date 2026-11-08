@@ -95,6 +95,9 @@ struct SetupImportView:View {
                                                     Text(host.name).tag(host.id)
                                                 }
                                             }
+                                            Text("Source reference: \(reference.id)").font(.caption.monospaced()).textSelection(.enabled)
+                                            Text("Used by: "+setup.widgets.filter{$0.hostID == reference.id}.map(\.kind.title).joined(separator:", "))
+                                                .font(.caption).foregroundStyle(.secondary)
                                             if !store.hosts.contains(where:{$0.id == (mapping[reference.id] ?? reference.id)}) {
                                                 Text("Currently unavailable; reconnect or choose another machine. This stays an explicit machine selection.")
                                                     .font(.caption).foregroundStyle(.secondary)

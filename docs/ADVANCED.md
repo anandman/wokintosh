@@ -77,8 +77,10 @@ See the [quick start](../QUICKSTART.md), [README](../README.md), [release notes]
 In **Settings → Dashboard**, open the **(…)** menu below the widget list.
 **Export Setup…** saves a JSON file for your own Macs, including widget arrangement,
 content, actions, weather locations, and remote connection definitions. The export
-panel identifies this personal information. SSH keys, collector identities/state,
-transcripts, and Done/Blocked records are never bundled.
+panel identifies this personal information. SSH keys, collector state files,
+transcripts, and Done/Blocked records are never bundled. Machine identity references
+are included to map widget selections; the collector’s own host-id file stays on
+its original machine.
 
 On the destination Mac choose **Import Setup…**. Review the replacement widgets,
 added connections, and machine mappings before importing. An explicit selection of
