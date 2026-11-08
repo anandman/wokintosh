@@ -98,6 +98,7 @@ struct WidgetSettingsView: View {
 }
 
 private struct WidgetContentSettings: View {
+    @State private var showEarlierDone=false
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
 
@@ -127,13 +128,22 @@ private struct WidgetContentSettings: View {
                     Toggle("Include helper agents", isOn: Binding(
                         get: { widget.showHelpers }, set: { value in store.change(widget.id) { $0.showHelpers = value } }
                     ))
-                    Text("Work needing you appears first. Completed work stays marked Done until you review it on the dashboard.")
+                    Picker("Collapse Done after",selection:Binding(
+                        get:{widget.doneCollapseInterval},
+                        set:{value in store.change(widget.id){$0.doneCollapseInterval=value}})) {
+                        ForEach(DoneCollapseInterval.allCases) {interval in Text(interval.title).tag(interval)}
+                    }
+                    Text("Timed collapse keeps earlier completions unread. One hour is a useful starting point; Until reviewed keeps every Done notice on the dashboard.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Show Earlier Done…") {showEarlierDone=true}
+                    Text("Work needing you appears first. Review Done marks all matching notices reviewed, including Earlier Done.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
                     Button("Manage Machines…") { store.openSettings(.machines) }
                 }
             }.formStyle(.grouped)
+                .sheet(isPresented:$showEarlierDone) {EarlierDoneView(store:store,widgetID:widget.id)}
         case .music:
             Form {
                 Section("Apple Music") {

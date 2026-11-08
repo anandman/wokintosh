@@ -74,7 +74,7 @@ final class UsabilityTests: XCTestCase {
                 var tracker=baselined(at:now)
                 tracker.ingest([done],at:now)
                 tracker.ingest([row(state,at:now.addingTimeInterval(offset))],at:now)
-                XCTAssertEqual(tracker.pending,[CompletionRecord(done)],"\(state) at offset \(offset) is not newer activity")
+                XCTAssertEqual(tracker.pending,[CompletionRecord(done,observedAt:now)],"\(state) at offset \(offset) is not newer activity")
             }
         }
     }
@@ -87,7 +87,7 @@ final class UsabilityTests: XCTestCase {
             var offline=row(state,at:now.addingTimeInterval(1))
             offline.connected=false
             tracker.ingest([offline],at:now.addingTimeInterval(1))
-            XCTAssertEqual(tracker.pending,[CompletionRecord(done)],"Disconnected \(state) cannot supersede a completion")
+            XCTAssertEqual(tracker.pending,[CompletionRecord(done,observedAt:now)],"Disconnected \(state) cannot supersede a completion")
         }
     }
     func testSupersededCompletionCannotReplayAfterReloadButNewCompletionAppears() throws {
@@ -102,7 +102,7 @@ final class UsabilityTests: XCTestCase {
             XCTAssertTrue(tracker.pending.isEmpty,"Superseded Done must not return from stale finished evidence after \(state)")
             let newDone=row(.finished,at:now.addingTimeInterval(3))
             tracker.ingest([newDone,newDone],at:now.addingTimeInterval(3))
-            XCTAssertEqual(tracker.pending,[CompletionRecord(newDone)])
+            XCTAssertEqual(tracker.pending,[CompletionRecord(newDone,observedAt:now.addingTimeInterval(3))])
         }
     }
     func testUnreviewedCompletionVisibleWithoutFinishedHistoryToggle() {

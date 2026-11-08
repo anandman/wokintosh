@@ -4,9 +4,10 @@ public struct CompletionRecord: Codable, Equatable, Identifiable, Sendable {
     public var hostID: String
     public var hostName: String
     public var session: AgentSession
+    public var observedAt:Date?
     public var id: String { row.id }
-    public var row: SessionRow { SessionRow(hostID:hostID,hostName:hostName,session:session,completionPending:true) }
-    public init(_ row: SessionRow) { hostID=row.hostID;hostName=row.hostName;session=row.session }
+    public var row: SessionRow { SessionRow(hostID:hostID,hostName:hostName,session:session,completionPending:true,completionObservedAt:observedAt) }
+    public init(_ row: SessionRow,observedAt:Date?=nil) { hostID=row.hostID;hostName=row.hostName;session=row.session;self.observedAt=observedAt ?? row.completionObservedAt }
 }
 
 public struct CompletionTracker: Codable, Equatable, Sendable {
@@ -26,6 +27,7 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
         lastSeen=try c.decodeIfPresent([String:Date].self,forKey:.lastSeen) ?? [:]
     }
     public mutating func ingest(_ rows: [SessionRow], connectedHostIDs:[String] = [], at now: Date = Date()) {
+        for index in pending.indices where pending[index].observedAt == nil {pending[index].observedAt=now}
         reviewed=reviewed.filter { now.timeIntervalSince($0.value)<7*86400 }
         active=active.filter { now.timeIntervalSince($0.value)<7*86400 }
         lastSeen=lastSeen.filter { now.timeIntervalSince($0.value)<7*86400 }
@@ -71,8 +73,8 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
                 guard observedTurn || afterBaseline else { continue }
                 guard reviewed[row.id].map({ $0 < row.session.updatedAt }) ?? true else { continue }
                 if let index=pending.firstIndex(where:{ $0.id == row.id }) {
-                    if pending[index].session.updatedAt < row.session.updatedAt { pending[index]=CompletionRecord(row) }
-                } else { pending.append(CompletionRecord(row)) }
+                    if pending[index].session.updatedAt < row.session.updatedAt { pending[index]=CompletionRecord(row,observedAt:now) }
+                } else { pending.append(CompletionRecord(row,observedAt:now)) }
                 active.removeValue(forKey:row.id)
             }
         }

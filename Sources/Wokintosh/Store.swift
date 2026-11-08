@@ -240,6 +240,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return !widget.showFinished || age<86400
         }
     }
+    func completionPresentation(for widget:Widget,at now:Date=Date())->CompletionPresentation {
+        CompletionPresentation.make(rows:rows(for:widget),interval:widget.doneCollapseInterval,at:now)
+    }
     func drives(for widget:Widget) -> [DriveReading] {
         let value=system(for:widget).1
         if let drives=value.drives { return drives }
@@ -339,7 +342,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         let names=["Calendar sync", "Collector tests", "Window layout", "Auth review", "Acceptance testing", "Music metadata", "Layout persistence", "Release notes", "Parser coverage", "Linux collector", "Artwork cache", "Window placement"]
         return names.enumerated().map { index, title in
             let provider = [0,3,5,7,9,11].contains(index) ? "claude" : "codex"
-            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : (index == 4 ? .blocked : .working)), updatedAt: Date().addingTimeInterval(Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : (index == 4 ? "Manual acceptance pending" : "Working"))),completionPending:index>=2 && index<4)
+            return SessionRow(hostID: index == 4 || index == 5 ? "minion" : "dev", hostName: index == 4 || index == 5 ? "Minion" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : (index == 4 ? .blocked : .working)), updatedAt: Date().addingTimeInterval(index == 3 ? -7200 : Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : (index == 4 ? "Manual acceptance pending" : "Working"))),completionPending:index>=2 && index<4,completionObservedAt:Date().addingTimeInterval(index == 3 ? -7200 : -60))
         }
     }
 }
