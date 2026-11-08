@@ -56,7 +56,7 @@ struct AgentWidget: View {
                             .help("Show earlier Done notices. They remain unread until reviewed.")
                     }
                     if let overflow=page.overflowLabel {
-                        Text(narrow || !completions.earlier.isEmpty ? "+\(page.hiddenCount) more" : overflow).font(retroFont(20*t))
+                        Text(narrow && !completions.earlier.isEmpty ? "+\(page.hiddenCount)" : (narrow || !completions.earlier.isEmpty ? "+\(page.hiddenCount) more" : overflow)).font(retroFont(20*t))
                             .foregroundStyle(page.hiddenAttentionCount > 0 ? .orange : .primary)
                             .help(overflow).accessibilityLabel(overflow)
                     }
