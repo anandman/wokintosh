@@ -36,10 +36,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
 
-    init(actionExecutor:WidgetActionExecutor?=nil) {
+    init(actionExecutor:WidgetActionExecutor?=nil,dataDirectory injectedDirectory:URL?=nil) {
         self.actionExecutor=actionExecutor ?? WidgetActionExecutor()
         let arguments = ProcessInfo.processInfo.arguments
-        if let index = arguments.firstIndex(of: "--data-dir"), arguments.indices.contains(index + 1) {
+        if let injectedDirectory {
+            dataDirectory=injectedDirectory
+        } else if let index = arguments.firstIndex(of: "--data-dir"), arguments.indices.contains(index + 1) {
             dataDirectory = URL(fileURLWithPath: arguments[index + 1], isDirectory: true)
         } else {
             dataDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Wokintosh", isDirectory: true)
@@ -95,6 +97,27 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             if lastSaveError != message { presentMessage?(AppMessage(title:"Could Not Save Layout",message:message,isError:true));lastSaveError=message }
         }
     }
+    /// Persist before publishing so a failed import cannot replace the visible dashboard.
+    @discardableResult func applySetup(_ setup:DashboardSetup,machineMapping:[String:String]=[:]) throws -> URL {
+        let imported=try setup.applying(to:document,machineMapping:machineMapping)
+        saveTask?.cancel();saveTask=nil
+        do {
+            if layoutNeedsBackup {
+                let original=dataDirectory.appendingPathComponent("layout.json")
+                if FileManager.default.fileExists(atPath:original.path) {
+                    try FileManager.default.copyItem(at:original,to:dataDirectory.appendingPathComponent("layout-unreadable-backup-"+UUID().uuidString+".json"))
+                }
+            }
+            let backup=try SetupPersistence.importDocument(imported,replacing:document,in:dataDirectory)
+            layoutNeedsBackup=false
+            document=imported;selectedID=document.widgets.first?.id
+            return backup
+        } catch {
+            scheduleSave()
+            throw error
+        }
+    }
+
     var selectedWidget: Widget? { document.widgets.first { $0.id == selectedID } }
     func change(_ id: UUID, _ transform: (inout Widget) -> Void) {
         guard let index = document.widgets.firstIndex(where: { $0.id == id }) else { return }

@@ -5,6 +5,7 @@ struct WidgetSettingsView: View {
     @ObservedObject var store: DashboardStore
     @State private var inspectorTab = WidgetInspectorTab.content
     @State private var confirmReset = false
+    @State private var pendingSetup:SetupImportSelection?
 
     private enum WidgetInspectorTab: Hashable { case content, layout, actions }
 
@@ -18,6 +19,7 @@ struct WidgetSettingsView: View {
             inspector
                 .frame(minWidth: 330, idealWidth: 360, maxWidth: 360, maxHeight: .infinity)
         }
+        .sheet(item:$pendingSetup) { selection in SetupImportView(store:store,setup:selection.setup) }
         .onChange(of: store.selectedID) { _, _ in inspectorTab = .content }
         .confirmationDialog("Restore the default widget layout?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Restore Default Layout", role: .destructive) { store.resetLayout() }
@@ -60,6 +62,10 @@ struct WidgetSettingsView: View {
                         WidgetActions(store: store, widget: widget)
                         Divider()
                     }
+                    Button("Export Setup…") {store.exportSetup(.setup)}
+                    Button("Export Shareable Template…") {store.exportSetup(.template)}
+                    Button("Import Setup…") {pendingSetup=store.chooseSetupImport()}
+                    Divider()
                     Button("Restore Default Layout…", role: .destructive) { confirmReset = true }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton)
@@ -198,7 +204,7 @@ private struct SystemWidgetSettings: View {
                             identifier: "driveInventory",
                             accessibilityLabel: "Mounted drives",
                             items: drives.map { drive in
-                                SettingsInventoryItem(id: drive.id, title: drive.name, subtitle: drive.mountPoint, isSelected: selected.contains(drive.id))
+                                SettingsInventoryItem(id: drive.id, title: SystemDrivePresentation.label(for:drive), subtitle: SystemDrivePresentation.detail(for:drive), isSelected: selected.contains(drive.id))
                             } + selected.filter { id in !drives.contains { $0.id == id } }.map { id in
                                 SettingsInventoryItem(id: id, title: "Unavailable drive", subtitle: id, isSelected: true)
                             },
