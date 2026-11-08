@@ -2,6 +2,9 @@ import SwiftUI
 import WokintoshCore
 
 private struct MetricReading {
+    let symbol:String
+    let tint:Color
+    let detail:String
     let label:String
     let value:String
     let compactValue:String
@@ -39,14 +42,14 @@ struct SystemWidget: View {
         var result:[MetricReading]=[]
         if widget.systemOptions.showCPU {
             let text=value.cpuPercent.map{String(format:"%.0f%%",$0)} ?? "—"
-            result.append(MetricReading(label:"CPU",value:text,compactValue:text,qualifier:"",fraction:SystemMetricFraction.cpu(value.cpuPercent)))
+            result.append(MetricReading(symbol:"cpu",tint:Color(red:0.1,green:0.35,blue:0.65),detail:"CPU utilization",label:"CPU",value:text,compactValue:text,qualifier:"",fraction:SystemMetricFraction.cpu(value.cpuPercent)))
         }
         if widget.systemOptions.showMemory {
-            result.append(MetricReading(label:"RAM",value:bytes(value.memoryUsedBytes),compactValue:compactBytes(value.memoryUsedBytes,fractional:true),qualifier:"used",fraction:SystemMetricFraction.used(value.memoryUsedBytes,total:value.memoryTotalBytes)))
+            result.append(MetricReading(symbol:"memorychip",tint:.retroPurple,detail:"Memory utilization",label:"RAM",value:bytes(value.memoryUsedBytes)+" used",compactValue:compactBytes(value.memoryUsedBytes,fractional:true),qualifier:"used",fraction:SystemMetricFraction.used(value.memoryUsedBytes,total:value.memoryTotalBytes)))
         }
         if widget.systemOptions.showStorage {
             result += store.selectedDrives(for:widget).map { drive in
-                MetricReading(label:drive.name.isEmpty ? drive.mountPoint : drive.name,value:bytes(drive.freeBytes)+" free",compactValue:compactBytes(drive.freeBytes),qualifier:"free",fraction:SystemMetricFraction.driveUsed(free:drive.freeBytes,total:drive.totalBytes))
+                MetricReading(symbol:SystemDrivePresentation.isStartup(drive) ? "internaldrive" : "externaldrive",tint:Color(red:0.12,green:0.44,blue:0.3),detail:SystemDrivePresentation.detail(for:drive),label:SystemDrivePresentation.label(for:drive),value:bytes(drive.freeBytes)+" free",compactValue:compactBytes(drive.freeBytes),qualifier:"free",fraction:SystemMetricFraction.driveUsed(free:drive.freeBytes,total:drive.totalBytes))
             }
         }
         return result
@@ -55,24 +58,26 @@ struct SystemWidget: View {
         VStack(alignment:.leading,spacing:(columnar ? 5 : (compact ? 2 : 4))*t) {
             if columnar {
                 HStack(spacing:3) {
+                    Image(systemName:item.symbol).foregroundStyle(item.tint)
                     Text(item.label).lineLimit(1)
                     if !item.qualifier.isEmpty {Text(item.qualifier).fixedSize()}
                 }.font(retroFont(18*t,bold:false))
                 Text(item.compactValue).font(retroFont(26*t)).lineLimit(1)
             } else if compact {
                 HStack(spacing:5) {
+                    Image(systemName:item.symbol).font(.system(size:15*t,weight:.semibold)).foregroundStyle(item.tint)
                     Text(item.label).font(retroFont(16*t)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-                    Text(item.compactValue+(item.qualifier == "free" ? " free":"")).font(retroFont(22*t)).lineLimit(1).fixedSize(horizontal:true,vertical:false).layoutPriority(1)
+                    Text(item.compactValue+(item.qualifier.isEmpty ? "" : " "+item.qualifier)).font(retroFont(22*t)).lineLimit(1).fixedSize(horizontal:true,vertical:false).layoutPriority(1)
                 }.frame(height:26*t)
             } else {
-                Text(item.label).font(retroFont(18*t)).lineLimit(1)
+                Label(item.label,systemImage:item.symbol).font(retroFont(18*t)).foregroundStyle(item.tint).lineLimit(1)
                 Text(item.value).font(retroFont(28*t)).lineLimit(1)
             }
             Group {
                 if let fraction=item.fraction { GeometryReader { geometry in
                     ZStack(alignment:.leading) {
                         Color.black.opacity(0.07)
-                        Rectangle().fill(.black.opacity(0.68)).frame(width:geometry.size.width*fraction)
+                        Rectangle().fill(item.tint).frame(width:geometry.size.width*fraction)
                     }.overlay(Rectangle().stroke(.black.opacity(0.35),lineWidth:0.7))
                 } }
                 else { Rectangle().fill(.clear).overlay(Rectangle().stroke(.black.opacity(0.4),lineWidth:1)).overlay(Text("—").font(.system(size:9))) }
@@ -81,7 +86,7 @@ struct SystemWidget: View {
         .frame(maxWidth:.infinity,alignment:.leading)
         .accessibilityElement(children:.combine)
         .accessibilityLabel("\(item.label), \(item.value)")
-        .help("\(item.label): \(item.value)\n"+(item.fraction.map{String(format:"%.0f%% used",$0*100)} ?? "Usage unavailable"))
+        .help("\(item.label): \(item.value)\n\(item.detail)\n"+(item.fraction.map{String(format:"%.0f%% used",$0*100)} ?? "Usage unavailable"))
     }
     private func bytes(_ value:UInt64?)->String {value.map{ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.memory)} ?? "—"}
     private func compactBytes(_ value:UInt64?,fractional:Bool=false)->String {

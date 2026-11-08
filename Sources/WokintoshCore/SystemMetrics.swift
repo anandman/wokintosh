@@ -59,3 +59,16 @@ public enum SystemMetricFraction {
         return Double(total-free)/Double(total)
     }
 }
+
+/// App-side labels also clarify readings supplied by older collectors.
+public enum SystemDrivePresentation {
+    public static func isStartup(_ drive:DriveReading)->Bool { drive.id == "/" || drive.mountPoint == "/" }
+    public static func label(for drive:DriveReading)->String {
+        if isStartup(drive) {return "Startup disk"}
+        let name=drive.name.trimmingCharacters(in:.whitespacesAndNewlines)
+        return name.isEmpty ? URL(fileURLWithPath:drive.mountPoint).lastPathComponent : name
+    }
+    public static func detail(for drive:DriveReading)->String {
+        "\(drive.name.isEmpty ? label(for:drive) : drive.name) · \(drive.mountPoint)"
+    }
+}
