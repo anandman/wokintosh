@@ -46,5 +46,7 @@ struct EarlierDoneView:View {
                 }
             }.padding(24)
         }.frame(width:620,height:500)
+            .foregroundStyle(.primary)
+            .preferredColorScheme(NSApp.effectiveAppearance.bestMatch(from:[.darkAqua,.aqua]) == .darkAqua ? .dark : .light)
     }
 }
