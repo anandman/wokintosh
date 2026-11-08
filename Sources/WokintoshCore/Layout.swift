@@ -27,18 +27,20 @@ public struct WidgetFrame: Codable, Equatable, Sendable {
 public struct Widget: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID; public var kind: WidgetKind; public var frame: WidgetFrame
     public var hostID: String?; public var provider: String?; public var showFinished: Bool; public var showHelpers: Bool
+    public var doneCollapseInterval=DoneCollapseInterval.untilReviewed
     public var systemOptions=SystemWidgetOptions()
     public var calendarOptions=CalendarSelectionOptions()
     public var weatherOptions=WeatherWidgetOptions()
     public var action=WidgetAction()
     public init(kind: WidgetKind, frame: WidgetFrame) { self.id=UUID(); self.kind=kind; self.frame=frame; self.showFinished=false; self.showHelpers=false }
 
-    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,systemOptions,calendarOptions,weatherOptions,action }
+    private enum CodingKeys: String, CodingKey { case id,kind,frame,hostID,provider,showFinished,showHelpers,doneCollapseInterval,systemOptions,calendarOptions,weatherOptions,action }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(UUID.self,forKey:.id);kind=try c.decode(WidgetKind.self,forKey:.kind);frame=try c.decode(WidgetFrame.self,forKey:.frame)
         hostID=try c.decodeIfPresent(String.self,forKey:.hostID);provider=try c.decodeIfPresent(String.self,forKey:.provider)
         showFinished=try c.decodeIfPresent(Bool.self,forKey:.showFinished) ?? false;showHelpers=try c.decodeIfPresent(Bool.self,forKey:.showHelpers) ?? false
+        doneCollapseInterval=(try? c.decode(DoneCollapseInterval.self,forKey:.doneCollapseInterval)) ?? .untilReviewed
         systemOptions=try c.decodeIfPresent(SystemWidgetOptions.self,forKey:.systemOptions) ?? SystemWidgetOptions()
         calendarOptions=try c.decodeIfPresent(CalendarSelectionOptions.self,forKey:.calendarOptions) ?? CalendarSelectionOptions()
         weatherOptions=try c.decodeIfPresent(WeatherWidgetOptions.self,forKey:.weatherOptions) ?? WeatherWidgetOptions()

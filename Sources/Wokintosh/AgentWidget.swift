@@ -5,7 +5,12 @@ struct AgentWidget: View {
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
     var actionsEnabled=true
+    @State private var showEarlierDone=false
     var body: some View {
+        TimelineView(.periodic(from:.now,by:15)) {context in content(at:context.date)}
+            .sheet(isPresented:$showEarlierDone) {EarlierDoneView(store:store,widgetID:widget.id,actionsEnabled:actionsEnabled)}
+    }
+    private func content(at now:Date)->some View {
         GeometryReader { geometry in
             let t=store.document.textScale
             let layout=AgentWidgetLayout(width:geometry.size.width,height:geometry.size.height,textScale:t)
@@ -14,7 +19,8 @@ struct AgentWidget: View {
             let rowHeight=layout.rowHeight
             let header=layout.headerHeight
             let capacity=layout.capacity
-            let page=AgentPresentation.make(rows:store.rows(for:widget),capacity:capacity,showFinished:widget.showFinished)
+            let completions=store.completionPresentation(for:widget,at:now)
+            let page=completions.page(capacity:capacity,showFinished:widget.showFinished)
             VStack(alignment:.leading,spacing:0) {
                 HStack(spacing:8) {
                     Text(layout.compactSummary ? "\(page.attentionCount) need you" : "\(page.attentionCount) need you · \(page.doneCount) done · \(page.workingCount) working")
@@ -24,13 +30,13 @@ struct AgentWidget: View {
                     if page.doneCount>0 {
                         Button { store.reviewAllCompletions(for:widget) } label: { Label("Review Done",systemImage:"checkmark.circle") }
                             .labelStyle(.iconOnly).font(.system(size:24*t)).buttonStyle(.plain).foregroundStyle(Color.retroPurple)
-                            .accessibilityLabel("Mark all Done sessions in this widget as reviewed").help("Mark all Done as reviewed")
+                            .accessibilityLabel("Mark all Done sessions in this widget as reviewed").help("Mark all Done as reviewed, including Earlier Done notices")
                     }
                 }.frame(height:header,alignment:.leading)
                 if page.visible.isEmpty && capacity > 0 {
                     VStack(alignment:.leading,spacing:9) {
                         Text("No active sessions").font(retroFont(30*t))
-                        Text(store.refreshing ? "Checking agent machines…" : "Open a session or connect another machine in the editor.").font(retroFont(21*t,bold:false))
+                        Text(!completions.earlier.isEmpty ? "Earlier completions stay unread below." : (store.refreshing ? "Checking agent machines…" : "Open a session or connect another machine in the editor.")).font(retroFont(21*t,bold:false))
                     }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
                 } else {
                     ForEach(page.visible) { row in
@@ -41,8 +47,16 @@ struct AgentWidget: View {
                     Spacer(minLength:0)
                 }
                 HStack(spacing:10) {
+                    if !completions.earlier.isEmpty {
+                        Button {showEarlierDone=true} label: {
+                            Text("Earlier Done · \(completions.earlier.count)"+(narrow ? "" : " unread"))
+                                .font(retroFont((narrow ? 17 : 18)*t)).fixedSize(horizontal:true,vertical:false)
+                        }.buttonStyle(.plain).foregroundStyle(Color.retroPurple).layoutPriority(2)
+                            .accessibilityLabel("Earlier Done, \(completions.earlier.count) unread completions")
+                            .help("Show earlier Done notices. They remain unread until reviewed.")
+                    }
                     if let overflow=page.overflowLabel {
-                        Text(narrow ? "+\(page.hiddenCount) more" : overflow).font(retroFont(20*t))
+                        Text(narrow || !completions.earlier.isEmpty ? "+\(page.hiddenCount) more" : overflow).font(retroFont(20*t))
                             .foregroundStyle(page.hiddenAttentionCount > 0 ? .orange : .primary)
                             .help(overflow).accessibilityLabel(overflow)
                     }

@@ -51,9 +51,9 @@ public struct Snapshot: Codable, Equatable, Sendable {
     }
 }
 public struct SessionRow: Identifiable, Equatable, Sendable {
-    public var hostID: String; public var hostName: String; public var session: AgentSession; public var connected: Bool; public var completionPending: Bool
+    public var hostID: String; public var hostName: String; public var session: AgentSession; public var connected: Bool; public var completionPending: Bool; public var completionObservedAt: Date?
     public var id: String { [hostID, session.provider, session.id].map { "\($0.utf8.count):\($0)" }.joined() }
-    public init(hostID: String, hostName: String, session: AgentSession, connected: Bool = true, completionPending: Bool = false) { self.hostID=hostID; self.hostName=hostName; self.session=session; self.connected=connected; self.completionPending=completionPending }
+    public init(hostID: String, hostName: String, session: AgentSession, connected: Bool = true, completionPending: Bool = false, completionObservedAt: Date? = nil) { self.hostID=hostID; self.hostName=hostName; self.session=session; self.connected=connected; self.completionPending=completionPending;self.completionObservedAt=completionObservedAt }
 }
 public struct AgentPresentation {
     public var doneCount: Int = 0
