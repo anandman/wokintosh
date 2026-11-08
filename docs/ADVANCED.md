@@ -70,3 +70,72 @@ Agent discovery reads local transcripts or remote collector snapshots over SSH. 
 Widget actions open applications on the display Mac, including when a widget shows a remote machine. Agent actions open the selected provider app and do not navigate to an exact session or mark it reviewed. There is no lock-screen display or automatic app updater in 1.0.
 
 See the [quick start](../QUICKSTART.md), [README](../README.md), [release notes](../RELEASE_NOTES.md) and [credits](../THIRD_PARTY_NOTICES.md).
+
+
+## Moving and sharing setups
+
+In **Settings → Dashboard**, open the **(…)** menu below the widget list.
+**Export Setup…** saves a JSON file for your own Macs, including widget arrangement,
+content, actions, weather locations, and remote connection definitions. The export
+panel identifies this personal information. SSH keys, collector identities/state,
+transcripts, and Done/Blocked records are never bundled.
+
+On the destination Mac choose **Import Setup…**. Review the replacement widgets,
+added connections, and machine mappings before importing. An explicit selection of
+the exporting Mac defaults to this Mac when the local collector is available;
+missing machines remain explicitly unavailable until reconnected or remapped.
+Implicit All machines and This Mac selections keep their meaning. Remote definitions
+merge with existing connections by SSH destination and collector path. Confirming
+import allows normal read-only polling of enabled added connections; install or
+update collectors and hooks separately in Machines.
+
+Import replaces the widget layout, text size, and grid preference. The destination's
+display/presentation preferences, native source permissions, and unread notices are
+kept. Check calendar and drive selections in each widget afterward, and connect Music
+and Calendar in Connections as needed. Importing does not launch configured actions.
+
+**Export Shareable Template…** keeps the arrangement and generic display choices,
+including Done-collapse preferences, while removing machine references, selected
+drives, calendar IDs and title filters, weather locations, and click actions.
+Recipients choose those settings after import. Calendar templates initially select
+no calendars. Template files are sanitized again on import.
+
+Before an import commits, the current layout (including unsaved changes) is backed
+up as a uniquely named `layout-backup-<date>-<id>.json` in the Wokintosh data folder.
+The success screen offers **Show Backup in Finder**. To restore one, quit Wokintosh,
+keep a copy of the current `layout.json`, copy the backup to `layout.json`, and reopen
+the app. A backup or write failure leaves the current dashboard in place.
+
+For a manual transfer, quit both copies and copy only `layout.json` between the
+Wokintosh data folders, after backing up the destination file. This also copies
+notification state and machine-specific display selections. Keep the collector
+folder on its own machine: its host identity must stay unique.
+
+## Earlier Done notices
+
+Agent widget Content settings offer **Collapse Done after**: Until reviewed
+(the default), 15 minutes, 1 hour, 4 hours, or 1 day. The timer starts when this
+Mac first observes a completed turn, so a late-arriving remote completion gets its
+full visibility interval. Existing pending notices begin their interval on the
+first refresh after upgrading. The local observation time survives restarts.
+
+Collapsed notices remain unread in **Earlier Done · N unread** and still count
+in the widget's Done total. Open the list from the dashboard footer or
+**Show Earlier Done…** in Content settings. Use a notice's Review button, or
+**Review All Earlier Done**, to acknowledge it. Opening its configured app or link
+keeps it unread. The dashboard's **Review Done** control reviews all matching Done
+notices, including earlier ones. All controls respect the widget's machine,
+provider, and helper-agent filters.
+
+Collapse affects only pending Done rows; Needs You, Working, and Blocked stay in
+the main list. Turning on recent inactive sessions does not bring collapsed unread
+rows back into the main list. Change the timeout to Until reviewed to show them
+there again. The dashboard tracks reminders and opens configured applications;
+it does not display the original agent output or navigate to an exact session.
+
+## System reading labels
+
+CPU, RAM, and drive readings have distinct icons and gauge accents. The root
+filesystem is labeled **Startup disk**; other drives keep their volume names.
+Values identify RAM used and drive space free. All gauges show utilization;
+hover for the used percentage and drive details. Missing readings remain unavailable.
