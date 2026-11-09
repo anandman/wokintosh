@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fits complete readouts first, using both dimensions and measured text widths.
+/// Keeps readable value cells consistent; headings wrap within the available space.
 public struct SystemMetricLayout: Equatable, Sendable {
     public let columns:Int
     public let capacity:Int
@@ -40,7 +40,7 @@ public struct SystemMetricLayout: Equatable, Sendable {
                 let cellWidth=(w-pad*2-Double(cols-1)*horizontal)/Double(cols)
                 guard cellWidth>=minimumWidth || (allowNarrow && cols == 1) else {continue}
                 let needed=total == 0 ? 0 : (total-1)/cols+1
-                let minHeight=(mode == 3 ? 33.0 : (mode == 2 ? 49.0 : (mode == 1 ? 88.0 : (needed == 1 ? 66.0 : 60.0))))*scale
+                let minHeight=(mode == 3 ? 33.0 : (mode == 2 ? 49.0 : (mode == 1 ? (needed == 1 ? 88.0 : 79.0) : (needed == 1 ? 66.0 : 60.0))))*scale
                 let footer=partial && total>0 ? min(20*scale,available) : 0
                 let gap=min(4.0,max(0,available-footer))
                 let budget=max(0,available-(partial ? footer+gap : 0))
@@ -77,8 +77,10 @@ public struct SystemMetricLayout: Equatable, Sendable {
         let choice=selected!
         columns=choice.columns;capacity=choice.capacity
         stackedCompact=choice.mode == 2
-        compact=choice.mode >= 2;columnar=choice.mode == 1 || (!compact && choice.rows == 1 && choice.capacity == total)
-        labelLineLimit=choice.mode == 1 ? 2 : 1
+        compact=choice.mode >= 2
+        columnar = !compact && choice.rows == 1 && choice.capacity == total
+        let twoLineHeight=(columnar ? 88.0 : 79.0)*scale
+        labelLineLimit=choice.mode == 1 || (!compact && choice.rowHeight>=twoLineHeight) ? 2 : 1
         padding=choice.padding;spacing=choice.spacing;horizontalSpacing=choice.horizontalSpacing
         rowHeight=choice.rowHeight;overflowHeight=choice.overflowHeight
     }
