@@ -1,13 +1,15 @@
-# Wokintosh 1.2.0
+# Wokintosh 1.3.0
 
-Clearer System readings, portable dashboard setups, and less Done clutter without losing unread reminders.
+Bring another Mac’s music and selected calendars to your dashboard, with System widgets that adapt to their shape.
 
-- **Recognizable System readings:** CPU, RAM, and drives have distinct icons and gauge accents. The startup filesystem is labeled **Startup disk**, with explicit RAM-used and drive-free values and detailed usage tooltips.
-- **Move a setup between Macs:** use **Settings → Dashboard → (…) → Export Setup…** on one Mac and **Import Setup…** on another. Review machine mappings and added connections before importing; Wokintosh creates a backup of the current layout first.
-- **Share a starting layout:** **Export Shareable Template…** removes personal machine references, weather locations, calendar selections and filters, and configured actions. Recipients choose those settings after import.
-- **Keep older Done notices out of the way:** each Agent widget offers **Collapse Done after**, with 15-minute, 1-hour, 4-hour, and 1-day choices. Older completions move into **Earlier Done** and remain unread until reviewed. The default remains **Until reviewed**.
-- Earlier Done notices survive restarts and stay accessible at minimum widget size. Late-arriving remote completions receive their full visibility interval from the time this Mac first observes them. Blocked and Needs You rows remain visible.
+- **Remote Now Playing:** choose a Mac in a Now Playing widget to display its Apple Music track, artist, artwork and playback state over the existing SSH connection. Remote sources are read-only; playback controls remain available for This Mac.
+- **Remote Calendar:** show selected calendars from another Mac without enabling Calendar access on the display Mac. The source Mac shares only calendars you select, including upcoming titles and times; notes, attendees, locations and links stay there.
+- **Explicit sharing:** enable sources in **Connections → Share from this Mac** on the source Mac. Sharing defaults off, Calendar starts with no selections, and these choices stay on that Mac rather than traveling with exported setups or templates. Keep Wokintosh running there; its dashboard can be closed.
+- **Clear source status:** widget title bars name the remote machine. Stale and offline readings are labeled, retained music stops advancing, and an unavailable selected source never falls back to local data.
+- **Responsive System widgets:** tall widgets distribute readings vertically; wide widgets wrap complete headings; longer drive names reflow into compact grids. Gauges, overflow and disconnected-source status keep their own space at larger text sizes.
 
-Wokintosh 1.1 users can install this release through Sparkle. Versions before 1.1 require a manual installation to obtain the updater. Your existing dashboard settings, local permissions, and unread notices are preserved. Check machine-specific calendar and drive selections after importing a setup. Remote collectors do not need updating for these enhancements.
+To use remote Music or Calendar, install Wokintosh 1.3 on the source Mac, enable sharing there, then **Install / Update** that machine’s collector in the display Mac’s Machines settings. Choose the machine in each widget’s **Content → Machine** setting. Existing agents and System collection remain compatible; collectors need updating for the new shared sources. Weather continues using each widget’s chosen location.
 
-The app and DMG are Developer ID signed, notarized, and stapled. The Sparkle feed and download are signed with Wokintosh’s existing update key.
+Wokintosh 1.1 and later can update through Sparkle. Earlier versions require a manual installation. Existing layouts, permissions, connected machines and unread notices are preserved. Sharing remains off until explicitly enabled. Anyone using your SSH account on the source Mac can read enabled shared sources.
+
+The app and DMG are Developer ID signed, notarized and stapled. The Sparkle feed and download use Wokintosh’s existing update key.

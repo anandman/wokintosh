@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Wokintosh protocol-v1 collector. Python 3.10+, macOS/Linux, stdlib only."""
 import argparse
+import base64
+import binascii
 import copy
 import fcntl
 import hashlib
@@ -13,6 +15,7 @@ import re
 import shlex
 import shutil
 import socket
+import stat
 try:
     import sqlite3
 except ImportError:
@@ -25,6 +28,8 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
+MAX_SHARED_SOURCES_BYTES = 1024 * 1024
+MAX_SHARED_ARTWORK_BYTES = 128 * 1024
 STALE_SECONDS = 1800
 MARKER = 'wokintosh-observer'
 CACHE_VERSION = 3
@@ -938,6 +943,129 @@ def merge_goal_markers(sessions, state_dir, home=None):
         return None  # An incomplete store cannot prove that a goal was cleared.
 
 
+def shared_source_date(value):
+    """Validate transport dates without inventing a fresh timestamp on failure."""
+    if not isinstance(value, str) or len(value) > 512 or not re.fullmatch(
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', value):
+        return None
+    try:
+        date = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return date.astimezone(timezone.utc) if date.utcoffset() is not None else None
+    except (ValueError, OverflowError):
+        return None
+
+
+def shared_source_text(value):
+    if not isinstance(value, str) or len(value) > 512:
+        return False
+    try:
+        value.encode('utf-8')  # Reject lone surrogates that Swift JSONDecoder cannot represent.
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def shared_source_base(value):
+    if (not isinstance(value, dict) or type(value.get('available')) is not bool or
+            shared_source_date(value.get('updatedAt')) is None or not shared_source_text(value.get('status'))):
+        return None
+    return {field: value[field] for field in ('available', 'updatedAt', 'status')}
+
+
+def shared_music(value, generated_at, now):
+    result = shared_source_base(value)
+    if result is None:
+        return None
+    if not result['available']:
+        return dict(result, title='', artist='', album='', isPlaying=False, position=0, duration=0)
+    if (not all(shared_source_text(value.get(field)) for field in ('title', 'artist', 'album')) or
+            type(value.get('isPlaying')) is not bool):
+        return None
+    duration, position = value.get('duration'), value.get('position')
+    if (type(duration) not in (int, float) or not 0 <= duration <= 604800 or
+            type(position) not in (int, float) or not 0 <= position <= duration):
+        return None
+    result.update({field: value[field] for field in ('title', 'artist', 'album', 'isPlaying', 'position', 'duration')})
+    # The original timestamps remain on the wire so clients can visibly label stale data.
+    if any(not -30 <= (now - date).total_seconds() <= 90
+           for date in (generated_at, shared_source_date(value['updatedAt']))):
+        result['isPlaying'] = False
+    artwork = value.get('artworkBase64')
+    if isinstance(artwork, str) and 0 < len(artwork) <= 4 * ((MAX_SHARED_ARTWORK_BYTES + 2) // 3):
+        try:
+            data = base64.b64decode(artwork, validate=True)
+            if len(data) <= MAX_SHARED_ARTWORK_BYTES and base64.b64encode(data).decode('ascii') == artwork:
+                result['artworkBase64'] = artwork
+        except (binascii.Error, ValueError):
+            pass  # A bad optional thumbnail need not hide an otherwise valid song.
+    return result
+
+
+def shared_calendar(value, now):
+    result = shared_source_base(value)
+    if result is None:
+        return None
+    if not result['available']:
+        return dict(result, calendars=[], events=[])
+    if not isinstance(value.get('calendars'), list) or not isinstance(value.get('events'), list):
+        return None
+    calendars = []
+    for item in value['calendars']:
+        if isinstance(item, dict) and all(shared_source_text(item.get(field)) for field in ('id', 'title', 'sourceTitle')):
+            calendars.append({field: item[field] for field in ('id', 'title', 'sourceTitle')})
+            if len(calendars) == 128:
+                break
+    selected = {item['id'] for item in calendars}
+    events = []
+    for item in value['events']:
+        if (not isinstance(item, dict) or
+                not all(shared_source_text(item.get(field)) for field in ('id', 'title', 'calendarID', 'calendarTitle')) or
+                type(item.get('isAllDay')) is not bool or item['calendarID'] not in selected):
+            continue
+        start, end = shared_source_date(item.get('startDate')), shared_source_date(item.get('endDate'))
+        if start is None or end is None or end <= start or end <= now or start >= now + timedelta(days=7):
+            continue
+        events.append({field: item[field] for field in ('id', 'title', 'startDate', 'endDate',
+                                                       'isAllDay', 'calendarID', 'calendarTitle')})
+    events.sort(key=lambda item: shared_source_date(item['startDate']))
+    result.update(calendars=calendars, events=events[:256])
+    return result
+
+
+def read_shared_sources(home, now):
+    """Read only a bounded, private, user-owned native publication; never native APIs."""
+    path = home / 'Library/Application Support/Wokintosh/shared-sources.json'
+    try:
+        # O_NONBLOCK keeps a malicious FIFO from stalling collection before fstat;
+        # O_NOFOLLOW checks the opened object rather than a racy path preflight.
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or
+                    info.st_mode & 0o077 or info.st_size > MAX_SHARED_SOURCES_BYTES):
+                return None
+            data = stream.read(MAX_SHARED_SOURCES_BYTES + 1)
+        if len(data) > MAX_SHARED_SOURCES_BYTES:
+            return None
+        value = json.loads(data)
+        if not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1:
+            return None
+        generated_at = shared_source_date(value.get('generatedAt'))
+        if generated_at is None:
+            return None
+        result = {'version': 1, 'generatedAt': value['generatedAt']}
+        music = shared_music(value.get('music'), generated_at, now)
+        calendar = shared_calendar(value.get('calendar'), now)
+        if music is not None:
+            result['music'] = music
+        if calendar is not None:
+            result['calendar'] = calendar
+        return result
+    except (OSError, ValueError, TypeError, OverflowError, RecursionError):
+        # Absence and invalid publication are normal. Global errors affect goal
+        # completion reconciliation and must stay independent of native sharing.
+        return None
+
+
 def make_snapshot(home, state_dir, now, host_name=None):
     state_dir.mkdir(parents=True, exist_ok=True)
     title_index = {}
@@ -1038,8 +1166,12 @@ def make_snapshot(home, state_dir, now, host_name=None):
               if (goal_identities is not None and (s['provider'], s['id']) in goal_identities) or
                  s.get('goalBlocked') is True or s['state'] == 'blocked' or
                  (now-parse_time(s['updatedAt'], now)).total_seconds() < 7*86400]
-    return {'schemaVersion': 1, 'host': {'id': host_identity(state_dir), 'name': clean(host_name or socket.gethostname().split('.')[0]), 'platform': 'macos' if platform.system() == 'Darwin' else platform.system().lower()},
-            'generatedAt': stamp(now), 'sessions': recent, 'system': system_stats(home, state_dir), 'errors': errors}
+    snapshot = {'schemaVersion': 1, 'host': {'id': host_identity(state_dir), 'name': clean(host_name or socket.gethostname().split('.')[0]), 'platform': 'macos' if platform.system() == 'Darwin' else platform.system().lower()},
+                'generatedAt': stamp(now), 'sessions': recent, 'system': system_stats(home, state_dir), 'errors': errors}
+    shared_sources = read_shared_sources(home, now)
+    if shared_sources is not None:
+        snapshot['sharedSources'] = shared_sources
+    return snapshot
 
 
 HOOK_LABELS = {

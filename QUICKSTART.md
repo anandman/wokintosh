@@ -11,6 +11,8 @@ Requires an Apple silicon Mac with macOS 14 or later. Agent machines may run mac
 5. In **Machines**, add an SSH alias or user@host and select **Install / Update over SSH**. SSH keys and host trust must already work in Terminal. Installation finds a compatible Python without changing the system default. Existing hooks and collector state are preserved.
 6. In **Display**, select the Wokyis screen and **Present on Display**. Adjust text size as needed. Escape leaves presentation; Command-comma opens settings. You can hide the Dock icon; the six-color square menu still offers **Quit Wokintosh**.
 
+To show another Mac’s music or calendar, install Wokintosh 1.3 there and enable **Connections → Share from this Mac**. Select the calendars to share; none are selected initially. Keep Wokintosh running there. On the display Mac, update that machine’s collector in **Machines**, then choose it in the widget’s **Content → Machine** setting. Remote sources are read-only; local Calendar access is unnecessary. Sharing choices are never imported or exported with a setup.
+
 Done agents stay unread until you use their separate Review control. In an Agent widget’s Content settings, **Collapse Done after** optionally moves older notices into **Earlier Done**; open that list to review them later. Right-click an unfinished session to mark it Blocked. Widget click actions are optional; they open apps on this Mac, including for remote-machine widgets.
 
 To move a setup between Macs, open **Dashboard → (…) → Export Setup…** and use **Import Setup…** on the destination. Import reviews machine selections and saves a backup. Use **Export Shareable Template…** for a reusable layout that omits personal settings.

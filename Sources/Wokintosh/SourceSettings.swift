@@ -51,6 +51,7 @@ struct ConnectionsSettingsView: View {
                 Text("Choose calendars, title filters, and event display options in each Calendar widget’s Content settings.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            SourceSharingSettings(store:store,sharing:store.sharing)
             Section {
                 Text("Permission is requested only when you connect a source. Weather locations are configured separately for each Weather widget.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -103,8 +104,8 @@ struct MachinesSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Agent machines") {
-                Text("This Mac is collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust.")
+            Section("Machines") {
+                Text("Agents and System are collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust. Macs can also share Now Playing and selected calendars through Wokintosh 1.3.")
                     .font(.caption).foregroundStyle(.secondary)
                 machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
                 ForEach(store.document.remoteHosts) { host in

@@ -97,14 +97,14 @@ private func calendarPermissionInfo(_ status: EKAuthorizationStatus) -> Calendar
         refreshCalendarAuthorization()
     }
 
-    func refresh(document: DashboardDocument) async {
+    func refresh(document: DashboardDocument, sharing:SourceSharingOptions=SourceSharingOptions(), localHostID:String?=nil) async {
         refreshCalendarAuthorization()
-        let kinds = Set(document.widgets.map(\.kind))
+        let kinds = Set(document.widgets.filter{$0.hostID == nil || $0.hostID == localHostID}.map(\.kind))
         // Snapshot choices before the first suspension, so later document edits can invalidate them.
         weatherWidgets = document.widgets.filter { $0.kind == .weather }
         let requests = weatherState.synchronize(widgets: document.widgets)
-        async let musicUpdate: Void = refreshMusicIfVisible(kinds.contains(.music))
-        async let calendarUpdate: Void = refreshCalendarIfVisible(kinds.contains(.calendar))
+        async let musicUpdate: Void = refreshMusicIfVisible(kinds.contains(.music) || sharing.shareMusic)
+        async let calendarUpdate: Void = refreshCalendarIfVisible(kinds.contains(.calendar) || sharing.shareCalendar)
         async let weatherUpdate: Void = refreshWeather(requests: requests)
         _ = await (musicUpdate, calendarUpdate, weatherUpdate)
     }
