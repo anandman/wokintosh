@@ -154,4 +154,4 @@ filesystem is labeled **Startup disk**; other drives keep their volume names.
 Values identify RAM used and drive space free. All gauges show utilization;
 hover for the used percentage and drive details. Missing readings remain unavailable.
 
-System readings adapt their row/column arrangement to each widget’s dimensions and measured labels. Wide widgets can wrap complete headings; long drive names use a compact grid, and portrait widgets spread stacked readings across the available height. Larger text and unavailable sources retain separate, visible status and overflow space.
+System readings adapt their row/column arrangement to each widget’s dimensions and measured labels. Wide widgets can wrap complete headings; long drive names wrap or truncate within the same large-value grid, and portrait widgets spread stacked readings across the available height. Larger text and unavailable sources retain separate, visible status and overflow space.

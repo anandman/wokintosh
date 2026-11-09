@@ -28,12 +28,11 @@ struct SystemWidget: View {
             let inlineValueFont=NSFont(name:"Arial-BoldMT",size:22*t) ?? NSFont.boldSystemFont(ofSize:22*t)
             let valueWidth=items.map{width($0.compactValue,font:valueFont)}.max() ?? 0
             let labelWidth=items.map{width(heading($0),font:labelFont)+23*t}.max() ?? 0
-            let wrappedWidth=items.map{wrappedHeadingWidth(heading($0),font:labelFont)+23*t}.max() ?? 0
             let compactWidth=items.map{max(width(heading($0),font:compactLabelFont)+20*t,width($0.compactValue,font:compactValueFont))}.max() ?? 0
             let inlineWidth=items.map{width($0.label,font:inlineLabelFont)+width(inlineValue($0),font:inlineValueFont)+25*t}.max() ?? 0
             let layout=SystemMetricLayout(width:g.size.width,height:g.size.height,textScale:t,count:items.count,
                                           minimumColumnWidth:max(valueWidth,labelWidth)/t+2,
-                                          minimumWrappedColumnWidth:max(valueWidth,wrappedWidth)/t+2,
+                                          minimumWrappedColumnWidth:valueWidth/t+2,
                                           minimumInlineWidth:inlineWidth/t+2,minimumCompactColumnWidth:compactWidth/t+2,sourceAvailable:connected)
             VStack(spacing:0) {
                 VStack(alignment:.leading,spacing:layout.spacing) {
@@ -73,7 +72,8 @@ struct SystemWidget: View {
         return result
     }
     private func metric(_ item:MetricReading,t:Double,layout:SystemMetricLayout)->some View {
-        VStack(alignment:.leading,spacing:0) {
+        let valueGap=(layout.columnar ? 5.0 : (layout.labelLineLimit>1 ? 1.0 : 2.0))*t
+        return VStack(alignment:.leading,spacing:0) {
             if layout.stackedCompact {
                 HStack(alignment:.top,spacing:5*t) {
                     Image(systemName:item.symbol).foregroundStyle(item.tint).frame(width:15*t)
@@ -95,8 +95,8 @@ struct SystemWidget: View {
                 }.font(retroFont(18*t,bold:false))
                     .frame(height:21*t*Double(layout.labelLineLimit),alignment:.topLeading)
                 Text(item.compactValue).font(retroFont(26*t)).lineLimit(1).minimumScaleFactor(0.8)
-                    .padding(.top,(layout.columnar ? 5 : 2)*t)
-                Spacer(minLength:(layout.columnar ? 5 : 2)*t)
+                    .padding(.top,valueGap)
+                Spacer(minLength:valueGap)
             }
             Group {
                 if let fraction=item.fraction { GeometryReader { geometry in
@@ -116,17 +116,6 @@ struct SystemWidget: View {
     private func heading(_ item:MetricReading)->String {item.label+(item.qualifier.isEmpty ? "" : " "+item.qualifier)}
     private func inlineValue(_ item:MetricReading)->String {item.compactValue+(item.qualifier.isEmpty ? "" : " "+item.qualifier)}
     private func width(_ text:String,font:NSFont)->Double {ceil((text as NSString).size(withAttributes:[.font:font]).width)}
-    /// Find the width that holds the complete heading on at most two native text lines.
-    private func wrappedHeadingWidth(_ text:String,font:NSFont)->Double {
-        var lower=1.0,upper=width(text,font:font)
-        let lineHeight=ceil(font.ascender-font.descender+font.leading)
-        for _ in 0..<12 {
-            let mid=(lower+upper)/2
-            let bounds=(text as NSString).boundingRect(with:NSSize(width:mid,height:1000),options:[.usesLineFragmentOrigin,.usesFontLeading],attributes:[.font:font])
-            if bounds.height<=lineHeight*2+0.5 && bounds.width<=mid+0.5 {upper=mid} else {lower=mid}
-        }
-        return ceil(upper)+2
-    }
     private func bytes(_ value:UInt64?)->String {value.map{ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.memory)} ?? "—"}
     private func compactBytes(_ value:UInt64?,fractional:Bool=false)->String {
         guard let value else {return "—"}

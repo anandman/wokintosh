@@ -84,5 +84,17 @@ final class SystemMetricTests:XCTestCase {
             }
         }
     }
+    func testEqualScreenshotWidgetsKeepTheSameLargeReadingsDespiteDifferentDriveNames() {
+        let short=SystemMetricLayout(width:272,height:178.5,textScale:1,count:4,minimumColumnWidth:118,minimumWrappedColumnWidth:118,minimumInlineWidth:260,minimumCompactColumnWidth:140)
+        let long=SystemMetricLayout(width:272,height:178.5,textScale:1,count:4,minimumColumnWidth:220,minimumWrappedColumnWidth:118,minimumInlineWidth:260,minimumCompactColumnWidth:190)
+        for layout in [short,long] {
+            XCTAssertEqual(layout.columns,2)
+            XCTAssertEqual(layout.capacity,4)
+            XCTAssertFalse(layout.compact,"A longer drive name must not switch all readings to smaller type")
+            XCTAssertEqual(layout.labelLineLimit,2)
+            XCTAssertGreaterThanOrEqual(layout.rowHeight,79)
+        }
+        XCTAssertEqual(short.rowHeight,long.rowHeight,accuracy:0.01)
+    }
     private var used:UInt64 {300}
 }
