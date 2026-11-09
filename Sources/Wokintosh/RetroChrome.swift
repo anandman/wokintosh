@@ -34,15 +34,15 @@ struct RetroWindow<Content: View>: View {
                 }.buttonStyle(.plain).disabled(onClose == nil).accessibilityLabel("Remove \(title) widget").help("Remove widget")
                 HStack(spacing:9) {
                     Stripes()
-                    Text(title).font(barFont()).fixedSize()
+                    Text(title).font(barFont()).lineLimit(1).truncationMode(.tail).layoutPriority(1).help(title)
                     Stripes()
-                    if !suffix.isEmpty { Text(suffix).font(barFont(18)).fixedSize() }
-                }.contentShape(Rectangle())
+                    if !suffix.isEmpty { Text(suffix).font(barFont(18)).lineLimit(1).truncationMode(.tail).layoutPriority(1).help(suffix) }
+                }.frame(minWidth:0,maxWidth:.infinity).contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance:1,coordinateSpace:.named("dashboard-canvas"))
                         .onChanged { onMove?($0.translation,false) }.onEnded { onMove?($0.translation,true) },including:onMove == nil ? .none : .all)
                 Button { onSelect?() } label: { Rectangle().stroke(.black,lineWidth:1.4).background(.white).frame(width:14,height:14) }
                     .buttonStyle(.plain).disabled(onSelect == nil).accessibilityLabel("Configure \(title) widget").help("Select widget settings")
-            }.padding(.horizontal,8).frame(height:28).background(Color(white:0.88))
+            }.padding(.horizontal,8).frame(height:28).clipped().background(Color(white:0.88))
             Rectangle().fill(.black).frame(height:1.5)
             content().frame(maxWidth:.infinity,maxHeight:.infinity)
         }.background(Color.retroPaper)

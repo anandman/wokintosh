@@ -59,6 +59,18 @@ install -m 755 ./wokintosh-agent "$HOME/.local/bin/wokintosh-agent"
 
 The default `python3` must be compatible for that last command. If it is older, invoke the script with your compatible versioned Python, or use Wokintosh’s SSH installer to pin it automatically. Then use Connect Existing Collector in Machines.
 
+## Shared native sources
+
+Wokintosh 1.3 can display another Mac’s Apple Music and selected Calendar events using the existing SSH connection. On the source Mac, open **Connections → Share from this Mac**. Sharing is off by default. Connect the local sources explicitly, enable the desired sharing toggles, and select the calendars allowed to leave that Mac. Keep Wokintosh running; it continues publishing with its dashboard closed. On the display Mac, update the source machine’s collector through **Machines → Install / Update**, then choose it in a Music or Calendar widget’s Content settings. Calendar authorization is needed only on the source Mac.
+
+Now Playing includes track metadata, playback state/position and a small artwork thumbnail. Remote playback controls are read-only. Calendar sharing includes the selected calendar names and up to 256 upcoming event titles/times in the next seven days; notes, attendees, locations and event links are omitted. The receiving widget applies its own Calendar filters. Changing a Calendar widget’s machine resets its calendar selection for that source, while retaining its other display/title filters.
+
+The source app writes a private, atomic `shared-sources.json` beside `layout.json`. Its machine-local `sharing-settings.json` is separate from the portable layout. Disabling a source removes its publication immediately. Sharing settings and cached source data are excluded from setup and template export/import. The collector reads this fixed cache path with a 1 MiB limit, requires a private user-owned regular file, and forwards only supported fields; it does not request native access or run Apple Music/EventKit itself. Anyone who can sign in with the source Mac’s SSH account can read enabled shared sources.
+
+Protocol 1 adds optional `sharedSources` with `version: 1`, an ISO-8601 `generatedAt`, and optional `music`/`calendar` objects. Each carries `available`, `updatedAt`, and `status`. Artwork is bounded base64 image data, never a filesystem path. Existing collectors and clients continue working without these optional fields. Missing sharing or an older collector produces setup guidance. Data older than 90 seconds, or more than 30 seconds into the future, is marked stale; failed SSH connections show Offline, and retained music stops advancing. No remote source falls back to the display Mac’s native data.
+
+Weather remains location-based and can be configured directly on the display Mac without remote publishing.
+
 ## Data, permissions and recovery
 
 Layouts save automatically in `~/Library/Application Support/Wokintosh/layout.json`. A file that cannot be decoded is preserved as a backup before defaults are saved. Quit an older running app before opening an updated copy; this prevents two copies from saving conflicting layouts.
@@ -67,7 +79,7 @@ Music and Calendar access are requested only when you connect them. Music must b
 
 Agent discovery reads local transcripts or remote collector snapshots over SSH. The collector caches bounded summaries, not full transcript bodies. Unknown evidence remains Unknown; a failed connection remains Offline. Old completed history is not imported as new Done notices on the first connection. New unreviewed completions and registered blocked goals persist across app restarts.
 
-Widget actions open applications on the display Mac, including when a widget shows a remote machine. Agent actions open the selected provider app and do not navigate to an exact session or mark it reviewed. There is no lock-screen display or automatic app updater in 1.0.
+Widget actions open applications on the display Mac, including when a widget shows a remote machine. Agent actions open the selected provider app and do not navigate to an exact session or mark it reviewed. There is no lock-screen display. App updates are available through Sparkle in versions 1.1 and later; remote collectors are updated separately in Machines.
 
 See the [quick start](../QUICKSTART.md), [README](../README.md), [release notes](../RELEASE_NOTES.md) and [credits](../THIRD_PARTY_NOTICES.md).
 
@@ -92,7 +104,7 @@ import allows normal read-only polling of enabled added connections; install or
 update collectors and hooks separately in Machines.
 
 Import replaces the widget layout, text size, and grid preference. The destination's
-display/presentation preferences, native source permissions, and unread notices are
+display/presentation preferences, native source permissions, machine-local sharing choices, and unread notices are
 kept. Check calendar and drive selections in each widget afterward, and connect Music
 and Calendar in Connections as needed. Importing does not launch configured actions.
 
@@ -141,3 +153,5 @@ CPU, RAM, and drive readings have distinct icons and gauge accents. The root
 filesystem is labeled **Startup disk**; other drives keep their volume names.
 Values identify RAM used and drive space free. All gauges show utilization;
 hover for the used percentage and drive details. Missing readings remain unavailable.
+
+System readings adapt their row/column arrangement to each widget’s dimensions and measured labels. Wide widgets can wrap complete headings; long drive names use a compact grid, and portrait widgets spread stacked readings across the available height. Larger text and unavailable sources retain separate, visible status and overflow space.

@@ -42,7 +42,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>Wokintosh reads Apple Music playback and album artwork when you connect it.</string>
-<key>NSCalendarsFullAccessUsageDescription</key><string>Wokintosh shows your upcoming calendar events when you enable the calendar widget.</string>
+<key>NSCalendarsFullAccessUsageDescription</key><string>Wokintosh reads upcoming events when you connect Calendar, for widgets and calendars you choose to share.</string>
 </dict></plist>
 PLIST
 # Only explicit release packaging enables the updater; normal development stays offline.

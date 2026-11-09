@@ -12,7 +12,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 @MainActor final class DashboardStore: ObservableObject {
-    @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave() } }
+    @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave();scheduleSourcePublication() } }
     @Published var settingsTab=SettingsTab.widgets
     @Published private var reviewedPreviewIDs=Set<String>()
     @Published private var blockedPreviewIDs=Set<String>()
@@ -22,13 +22,15 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var presentMessage: ((AppMessage) -> Void)?
     private var startupMessage: AppMessage?
     private var lastSaveError: String?
-    let native = NativeSources()
+    let native:NativeSources
+    let sharing:SourceSharing
     let updates = UpdateController()
     let dataDirectory: URL
     private var layoutNeedsBackup=false
     private var saveTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var nativeSubscription: AnyCancellable?
+    private var sourcePublishTask:Task<Void,Never>?
     private let localPython = LocalPythonDiscovery()
     private let actionExecutor:WidgetActionExecutor
     private var actionInFlight=Set<UUID>()
@@ -36,7 +38,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
 
-    init(actionExecutor:WidgetActionExecutor?=nil,dataDirectory injectedDirectory:URL?=nil) {
+    init(actionExecutor:WidgetActionExecutor?=nil,dataDirectory injectedDirectory:URL?=nil,nativeSources:NativeSources?=nil) {
+        native=nativeSources ?? NativeSources()
         self.actionExecutor=actionExecutor ?? WidgetActionExecutor()
         let arguments = ProcessInfo.processInfo.arguments
         if let injectedDirectory {
@@ -46,6 +49,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         } else {
             dataDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Wokintosh", isDirectory: true)
         }
+        sharing=SourceSharing(directory:dataDirectory)
         let file = dataDirectory.appendingPathComponent("layout.json")
         var loaded=DashboardDocument.defaultLayout
         var loadNotice:String?
@@ -59,7 +63,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         startupMessage=loadNotice.map { AppMessage(title:"Saved Layout Could Not Be Read",message:$0,isError:true) }
         selectedID = loaded.widgets.first?.id
         native.updateWidgets(loaded.widgets)
-        nativeSubscription = native.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        nativeSubscription = native.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send();self?.scheduleSourcePublication()
+        }
+        if loaded.previewMode {publishSharedSources()}
     }
 
     func start() {
@@ -256,13 +263,57 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         }
         return ids.map { id in available.first(where:{$0.id == id}) ?? DriveReading(id:id,name:URL(fileURLWithPath:id).lastPathComponent,mountPoint:id) }
     }
-    func calendarEvents(for widget:Widget) -> [CalendarEntry] {
-        if document.previewMode {
-            let start=Calendar.current.date(byAdding:.day,value:1,to:Calendar.current.startOfDay(for:.now))!.addingTimeInterval(9.5*3600)
-            let info=CalendarInfo(events:[CalendarEntry(id:"preview",title:"Planning",startDate:start,endDate:start.addingTimeInterval(3600),isAllDay:false,calendarID:"personal",calendarTitle:"Personal")],authorized:true)
-            return info.events(for:widget.calendarOptions)
+    func isLocalNativeSource(_ widget:Widget)->Bool {
+        widget.hostID == nil || widget.hostID == feeds["local"]?.snapshot?.host.id
+    }
+    func setNativeSource(_ id:UUID,hostID:String?) {
+        change(id) { widget in
+            guard widget.hostID != hostID else {return}
+            widget.hostID=hostID
+            if widget.kind == .calendar {widget.calendarOptions.calendarIDs=nil}
         }
-        return native.calendar.events(for:widget.calendarOptions)
+    }
+    func musicSource(for widget:Widget,at now:Date=Date())->MusicSourcePresentation {
+        if document.previewMode {return MusicSourcePresentation(info:NowPlayingInfo(title:"Blue Hour",artist:"Paper Satellites",isPlaying:true,position:137,duration:253,updatedAt:now))}
+        if let hostID=widget.hostID,!isLocalNativeSource(widget) {return NativeSourcePresentation.music(hostID:hostID,feeds:feeds,at:now)}
+        return MusicSourcePresentation(info:native.music)
+    }
+    func calendarSource(for widget:Widget,at now:Date=Date())->CalendarSourcePresentation {
+        if document.previewMode {
+            let start=Calendar.current.date(byAdding:.day,value:1,to:Calendar.current.startOfDay(for:now))!.addingTimeInterval(9.5*3600)
+            return CalendarSourcePresentation(info:CalendarInfo(events:[CalendarEntry(id:"preview",title:"Planning",startDate:start,endDate:start.addingTimeInterval(3600),isAllDay:false,calendarID:"personal",calendarTitle:"Personal")],authorized:true))
+        }
+        if let hostID=widget.hostID,!isLocalNativeSource(widget) {return NativeSourcePresentation.calendar(hostID:hostID,feeds:feeds,at:now)}
+        return CalendarSourcePresentation(info:native.calendar,loading:native.calendarLoading)
+    }
+    func calendarEvents(for widget:Widget) -> [CalendarEntry] {calendarSource(for:widget).info.events(for:widget.calendarOptions)}
+
+    func performPlayback(_ action:String,for widgetID:UUID) async {
+        guard !document.previewMode,let widget=document.widgets.first(where:{$0.id == widgetID}),widget.kind == .music,
+              musicSource(for:widget).allowsPlayback else {return}
+        await native.performPlayback(action)
+    }
+    func setSharingOptions(_ options:SourceSharingOptions) {
+        do {try sharing.setOptions(options);publishSharedSources()}
+        catch {presentMessage?(AppMessage(title:"Could Not Change Sharing",message:error.localizedDescription,isError:true));return}
+        Task { [weak self] in
+            guard let self,!self.document.previewMode else {return}
+            await self.native.refresh(document:self.document,sharing:self.sharing.options,localHostID:self.feeds["local"]?.snapshot?.host.id)
+            self.publishSharedSources()
+        }
+    }
+    private func scheduleSourcePublication() {
+        sourcePublishTask?.cancel()
+        sourcePublishTask=Task { [weak self] in
+            try? await Task.sleep(for:.milliseconds(25))
+            guard !Task.isCancelled else {return}
+            self?.publishSharedSources()
+        }
+    }
+    private func publishSharedSources() {
+        let calendarGranted=native.refreshCalendarAuthorization()
+        try? sharing.publish(music:native.music,musicAvailable:native.musicEnabled && native.musicConnected && native.musicConnectionKnown,
+                             calendar:native.calendar,calendarReady:calendarGranted && native.calendarDataState == .ready,preview:document.previewMode)
     }
     func system(for widget: Widget) -> (String, SystemReading, Bool) {
         if document.previewMode { return ("Minion", SystemReading(cpuPercent: 18, memoryUsedBytes: 12*1024*1024*1024, memoryTotalBytes: 24*1024*1024*1024, diskFreeBytes: 241*1024*1024*1024, diskTotalBytes: 512*1024*1024*1024, drives:[DriveReading(id:"/",name:"Macintosh HD",mountPoint:"/",freeBytes:241*1024*1024*1024,totalBytes:512*1024*1024*1024),DriveReading(id:"/Volumes/Archive",name:"Archive",mountPoint:"/Volumes/Archive",freeBytes:700*1024*1024*1024,totalBytes:2*1024*1024*1024*1024)]), true) }
@@ -287,7 +338,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             let completionRows=document.blockedSessions.applying(to:reportedRows,connectedHostIDs:connectedHosts)
             var completions=document.completions;completions.ingest(completionRows,connectedHostIDs:Array(connectedHosts))
             if completions != document.completions { document.completions=completions }
-            await native.refresh(document:document)
+            await native.refresh(document:document,sharing:sharing.options,localHostID:feeds["local"]?.snapshot?.host.id)
+            publishSharedSources()
         }
     }
     private func refreshFeeds() async {

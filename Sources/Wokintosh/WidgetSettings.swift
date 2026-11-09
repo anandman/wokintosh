@@ -145,18 +145,7 @@ private struct WidgetContentSettings: View {
             }.formStyle(.grouped)
                 .sheet(isPresented:$showEarlierDone) {EarlierDoneView(store:store,widgetID:widget.id)}
         case .music:
-            Form {
-                Section("Apple Music") {
-                    ConnectionStatusLabel(connected: store.native.musicConnected, known: store.native.musicConnectionKnown)
-                    Text(store.native.music.status).foregroundStyle(.secondary)
-                    if !store.native.music.artworkStatus.isEmpty { Text(store.native.music.artworkStatus).font(.caption).foregroundStyle(.secondary) }
-                    Button("Manage Connections…") { store.openSettings(.connections) }
-                }
-                Section {
-                    Text("Shows the current track, album artwork, and playback controls from Apple Music on this Mac.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-            }.formStyle(.grouped)
+            MusicWidgetSettings(store:store,widget:widget)
         case .clock:
             Form {
                 Section("Clock") {
@@ -167,21 +156,25 @@ private struct WidgetContentSettings: View {
     }
 }
 
-private struct WidgetMachinePicker: View {
+struct WidgetMachinePicker: View {
     @ObservedObject var store: DashboardStore
     let widget: DashboardWidget
 
+    private var nativeSource:Bool {widget.kind == .music || widget.kind == .calendar}
     var body: some View {
         Picker("Machine", selection: Binding(
-            get: { widget.hostID ?? "" },
-            set: { value in store.change(widget.id) { $0.hostID = value.isEmpty ? nil : value } }
+            get: { nativeSource && store.isLocalNativeSource(widget) ? "" : (widget.hostID ?? "") },
+            set: { value in
+                if nativeSource {store.setNativeSource(widget.id,hostID:value.isEmpty ? nil : value)}
+                else {store.change(widget.id) {$0.hostID=value.isEmpty ? nil : value}}
+            }
         )) {
             Text(widget.kind == .agents ? "All machines" : "This Mac").tag("")
             if store.document.previewMode {
                 Text("Dev Mini (preview)").tag("dev")
                 Text("Minion (preview)").tag("minion")
             }
-            ForEach(store.hosts, id: \.id) { host in Text(host.name).tag(host.id) }
+            ForEach(store.hosts.filter{!nativeSource || $0.id != store.feeds["local"]?.snapshot?.host.id}, id: \.id) { host in Text(host.name).tag(host.id) }
             if let selected = widget.hostID,
                !store.hosts.contains(where: { $0.id == selected }),
                !(store.document.previewMode && ["dev", "minion"].contains(selected)) {
@@ -256,12 +249,17 @@ private struct CalendarWidgetSettings: View {
     private var calendars: [CalendarDescriptor] {
         store.document.previewMode
             ? [CalendarDescriptor(id: "personal", title: "Personal", sourceTitle: "Preview"), CalendarDescriptor(id: "work", title: "Work", sourceTitle: "Preview")]
-            : store.native.calendar.calendars
+            : store.calendarSource(for:widget).info.calendars
     }
 
     var body: some View {
         Form {
             Section("Events") {
+                WidgetMachinePicker(store:store,widget:widget)
+                if let source=store.calendarSource(for:widget).source {
+                    Text("Read-only from \(source.name). Choose calendars to share in Wokintosh on that Mac.").font(.caption).foregroundStyle(.secondary)
+                    if let warning=source.warning {Text(warning).font(.caption).foregroundStyle(.orange)}
+                }
                 Toggle("Include all-day events", isOn: Binding(
                     get: { widget.calendarOptions.includeAllDay }, set: { on in store.change(widget.id) { $0.calendarOptions.includeAllDay = on } }
                 ))
@@ -275,7 +273,7 @@ private struct CalendarWidgetSettings: View {
                     set: { on in store.change(widget.id) { $0.calendarOptions.calendarIDs = on ? nil : [] } }
                 ))
                 if calendars.isEmpty {
-                    Text("Connect Calendar to choose individual calendars.").font(.caption).foregroundStyle(.secondary)
+                    Text(store.isLocalNativeSource(widget) ? "Connect Calendar to choose individual calendars." : "Enable calendar sharing on the selected Mac, choose calendars there, and update its collector to 1.3 or later.").font(.caption).foregroundStyle(.secondary)
                 } else {
                     SettingsInventoryScrollView(
                         identifier: "calendarInventory",
@@ -293,7 +291,7 @@ private struct CalendarWidgetSettings: View {
                         Text("No calendars selected").font(.caption).foregroundStyle(.orange)
                     }
                     Spacer()
-                    Button("Manage Connections…") { store.openSettings(.connections) }
+                    Button(store.isLocalNativeSource(widget) ? "Manage Connections…" : "Manage Machines…") {store.openSettings(store.isLocalNativeSource(widget) ? .connections : .machines)}
                 }
             }
             Section("Title filters") {

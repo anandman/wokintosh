@@ -111,8 +111,13 @@ struct PlacedWidget: View {
     }
     private func suffix(for frame:WidgetFrame)->String {
         if widget.kind == .agents { let count=store.rows(for:widget).count;return "\(count) \(count == 1 ? "session" : "sessions")" }
-        if widget.kind == .calendar && !widget.calendarOptions.nextEventOnly {
-            return CalendarWidgetLayout(width:frame.width*canvasSize.width,height:max(0,frame.height*canvasSize.height-29.5),textScale:store.document.textScale,eventCount:store.calendarEvents(for:widget).count,nextEventOnly:false).suffix
+        if widget.kind == .music {return store.musicSource(for:widget).source?.name ?? ""}
+        if widget.kind == .calendar {
+            let source=store.calendarSource(for:widget).source
+            let layout=NativeWidgetSourceLayout(height:max(0,frame.height*canvasSize.height-29.5),textScale:store.document.textScale,source:source)
+            let eventCount=store.calendarEvents(for:widget).count
+            let count=widget.calendarOptions.nextEventOnly ? "" : (!layout.showsContent && eventCount>1 ? "0/\(eventCount)" : CalendarWidgetLayout(width:frame.width*canvasSize.width,height:layout.contentHeight,textScale:store.document.textScale,eventCount:eventCount,nextEventOnly:false).suffix)
+            return [source?.name,count.isEmpty ? nil : count].compactMap{$0}.joined(separator:" · ")
         }
         return widget.kind == .system ? store.system(for:widget).0 : ""
     }
