@@ -61,6 +61,21 @@ import WokintoshCore
         XCTAssertEqual(reader.reads,1)
         XCTAssertEqual(reader.requests,0)
     }
+    func testActivationRefreshDoesNotReadCalendarForRemoteOnlyWidgetsButExplicitInventoryDoes() async {
+        let dir=directory();defer {try? FileManager.default.removeItem(at:dir)}
+        let reader=SharingCalendarReader(),suite="wokintosh-activation-"+UUID().uuidString
+        let defaults=UserDefaults(suiteName:suite)!;defer {defaults.removePersistentDomain(forName:suite)}
+        let native=NativeSources(defaults:defaults,calendarReader:reader,musicPermissionCheck:{false})
+        let store=DashboardStore(dataDirectory:dir,nativeSources:native)
+        var widget=Widget(kind:.calendar,frame:WidgetFrame(x:0,y:0,width:0.5,height:0.5));widget.hostID="minion"
+        store.document.widgets=[widget]
+        await store.refreshSourceConnections().value
+        XCTAssertTrue(native.calendar.authorized)
+        XCTAssertEqual(reader.reads,0)
+        await store.refreshSourceConnections(includeCalendarInventory:true).value
+        XCTAssertEqual(reader.reads,1)
+        XCTAssertEqual(reader.requests,0)
+    }
     func testArtworkBecomesBoundedImageDataWithoutSourcePath() throws {
         let dir=directory();defer {try? FileManager.default.removeItem(at:dir)}
         try FileManager.default.createDirectory(at:dir,withIntermediateDirectories:true)
