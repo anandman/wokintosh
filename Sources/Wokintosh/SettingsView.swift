@@ -19,7 +19,7 @@ struct SettingsView: View {
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag(SettingsTab.updates)
         }
         .onChange(of: store.settingsTab) { _, tab in
-            if tab == .connections { store.refreshSourceConnections() }
+            if tab == .connections { store.refreshSourceConnections(includeCalendarInventory:true) }
         }
         .padding(16)
         .frame(minWidth: 1050, minHeight: 720)

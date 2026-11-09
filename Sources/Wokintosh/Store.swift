@@ -152,9 +152,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     func configure(_ id:UUID) { selectedID=id;openSettings(.widgets) }
     func openSettings(_ tab:SettingsTab) { settingsTab=tab;native.refreshCalendarAuthorization();showSettings?() }
-    func refreshSourceConnections() {
+    @discardableResult func refreshSourceConnections(includeCalendarInventory:Bool=false)->Task<Void,Never> {
         native.refreshCalendarAuthorization()
-        Task { await native.refreshConnectionStatus() }
+        return Task { [weak self] in
+            guard let self else {return}
+            let localCalendar=self.document.widgets.contains{$0.kind == .calendar && self.isLocalNativeSource($0)}
+            await self.native.refreshConnectionStatus(readCalendarData:!self.document.previewMode && (includeCalendarInventory || localCalendar || self.sharing.options.shareCalendar))
+        }
     }
     func activateWidget(_ id:UUID,provider:String?=nil) {
         guard !document.previewMode else {return}

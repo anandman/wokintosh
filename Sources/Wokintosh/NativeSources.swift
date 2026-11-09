@@ -130,10 +130,10 @@ private func calendarPermissionInfo(_ status: EKAuthorizationStatus) -> Calendar
         return status == .fullAccess
     }
 
-    /// Preflight only: opening Settings must never request new permissions or require a visible widget.
-    func refreshConnectionStatus() async {
+    /// Permission preflight never prompts; Calendar inventory is an explicit caller choice.
+    func refreshConnectionStatus(readCalendarData:Bool=true) async {
         refreshCalendarAuthorization()
-        async let calendarUpdate: Void = refreshCalendarIfVisible(true)
+        async let calendarUpdate: Void = refreshCalendarIfVisible(readCalendarData)
         async let musicUpdate: Void = refreshMusicConnectionStatus()
         _ = await (calendarUpdate, musicUpdate)
     }
