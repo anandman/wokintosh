@@ -26,5 +26,8 @@ public struct PhonePairing:Codable,Equatable,Sendable {
         guard data.count<=4096 else {throw WidgetFeedError.oversized}
         return try JSONDecoder().decode(Self.self,from:data)
     }
-    public func encoded()throws->Data {try JSONEncoder().encode(self)}
+    public func encoded()throws->Data {
+        let encoder=JSONEncoder();encoder.outputFormatting=[.sortedKeys]
+        return try encoder.encode(self)
+    }
 }
