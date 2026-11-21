@@ -63,7 +63,7 @@ struct PhoneRepository:Sendable {
             try cache.clear()
         }
     }
-    func refresh()async throws->PhoneSnapshot {
+    func refresh(acknowledgingActionError:Bool=false)async throws->PhoneSnapshot {
         let request:(PhonePairing,UUID,UUID)?=try coordinator.withLock {
             guard !coordinator.actionInProgress(),cache.status().state != .authorizationRequired,let pairing=try credentials.load() else {return nil}
             return (pairing,try coordinator.generation(),try coordinator.beginRequest())
@@ -79,7 +79,7 @@ struct PhoneRepository:Sendable {
             guard try coordinator.generation()==generation,coordinator.latestRequest()==requestID,try credentials.load()==pairing,
                   cache.status().state != .authorizationRequired else {return try snapshotLocked()}
             switch result {
-            case .success(let feed):try cache.store(feed,fetchedAt:Date())
+            case .success(let feed):try cache.store(feed,fetchedAt:Date());if acknowledgingActionError {try coordinator.setActionMessage(nil)}
             case .failure(is CancellationError):break
             case .failure(PhoneFetchError.unauthorized):
                 try coordinator.advanceGeneration()
@@ -112,9 +112,11 @@ struct PhoneRepository:Sendable {
                 return try snapshotLocked()
             case .failure(let error):
                 if error as? PhoneFetchError == .unauthorized {
-                    try coordinator.advanceGeneration();try cache.requirePairing();try credentials.remove()
-                } else {try coordinator.setActionMessage(error.localizedDescription)}
-                throw error
+                    try coordinator.advanceGeneration();try cache.requirePairing();try credentials.remove();throw error
+                }
+                let reported=(error as? AgentControlError) ?? .unconfirmed
+                try coordinator.setActionMessage(reported.localizedDescription)
+                throw reported
             }
         }
     }

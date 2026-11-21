@@ -3,6 +3,8 @@ import UIKit
 import WidgetKit
 import WokintoshCore
 
+enum PhoneSettingsSheet:String,Identifiable {case scan,paste;var id:String {rawValue}}
+
 @MainActor final class PhoneStore:ObservableObject {
     @Published private(set) var snapshot=PhoneSnapshot.empty
     @Published var selectedWidgetID:UUID? {
@@ -12,6 +14,13 @@ import WokintoshCore
         didSet {if selectedSession==nil {selectedRoute=nil;navigationMessage=nil;if oldValue != nil {pendingNavigation=nil}}}
     }
     @Published private(set) var navigationMessage:String?
+    @Published var settingsVisible=false
+    @Published var settingsSheet:PhoneSettingsSheet?
+    private enum IncomingDestination {case widget(PhoneWidgetRoute),session(PhoneRoute),dashboard}
+    private var deferredDestination:IncomingDestination?
+    private enum ModalDismissal {case settingsChild,settings,session,earlier}
+    private var waitingForDismissal:ModalDismissal?
+    private var acknowledgeNextActionError=false
     @Published var earlierSelection:PhoneWidgetRoute?
     @Published private(set) var performingAction=false
     private var selectedRoute:PhoneRoute?
@@ -64,14 +73,16 @@ import WokintoshCore
     private func readLatest()throws {
         if let repository {apply(try repository.snapshot())}
     }
-    func refresh()async {
+    func refresh(acknowledgingActionError:Bool=false)async {
         guard !preview,let repository else {return}
+        if acknowledgingActionError {acknowledgeNextActionError=true}
         if refreshing {refreshAgain=true;return}
         refreshing=true
         repeat {
             refreshAgain=false
+            let acknowledge=acknowledgeNextActionError;acknowledgeNextActionError=false
             do {
-                _=try await repository.refresh()
+                _=try await repository.refresh(acknowledgingActionError:acknowledge)
                 // Another operation may have paired/unpaired while the fetch was suspended.
                 try readLatest();message=nil
                 WidgetCenter.shared.reloadAllTimelines()
@@ -101,16 +112,41 @@ import WokintoshCore
     }
     func handle(_ url:URL) {
         guard url.scheme=="wokintosh" else {return}
-        if url.host=="dashboard" {pendingNavigation=nil;do {try readLatest()} catch {message=error.localizedDescription};return}
-        if let route=PhoneWidgetRoute(url:url) {
-            pendingNavigation=nil;selectedSession=nil;earlierSelection=nil
+        let destination:IncomingDestination
+        if url.host=="dashboard" {destination = .dashboard}
+        else if let route=PhoneWidgetRoute(url:url) {destination = .widget(route)}
+        else if let route=PhoneRoute(url:url) {destination = .session(route)}
+        else {return}
+        pendingNavigation=nil;deferredDestination=destination
+        resumeDeferredNavigation()
+    }
+    func settingsSheetDismissed() {finishedDismissing(.settingsChild)}
+    func settingsDismissed() {settingsSheet=nil;finishedDismissing(.settings)}
+    func sessionDetailsDismissed() {finishedDismissing(.session)}
+    func earlierDoneDismissed() {finishedDismissing(.earlier)}
+    private func finishedDismissing(_ modal:ModalDismissal) {
+        guard waitingForDismissal==modal else {return}
+        waitingForDismissal=nil;resumeDeferredNavigation()
+    }
+    private func resumeDeferredNavigation() {
+        guard deferredDestination != nil,waitingForDismissal==nil else {return}
+        if selectedSession != nil {waitingForDismissal = .session;selectedSession=nil;return}
+        if earlierSelection != nil {waitingForDismissal = .earlier;earlierSelection=nil;return}
+        if settingsSheet != nil {waitingForDismissal = .settingsChild;settingsSheet=nil;return}
+        if settingsVisible {waitingForDismissal = .settings;settingsVisible=false;return}
+        guard let destination=deferredDestination else {return}
+        deferredDestination=nil;navigateIncoming(destination)
+    }
+    private func navigateIncoming(_ destination:IncomingDestination) {
+        switch destination {
+        case .session(let route):open(route)
+        case .dashboard:do {try readLatest()} catch {message=error.localizedDescription}
+        case .widget(let route):
             do {try readLatest()} catch {message=error.localizedDescription;return}
             guard snapshot.paired,snapshot.feed?.publisherID==route.publisherID,snapshot.feed?.widgets.contains(where:{$0.id==route.widgetID})==true else {return}
             selectedWidgetID=route.widgetID
-            if route.section == .earlier {earlierSelection=route};return
+            if route.section == .earlier {earlierSelection=route}
         }
-        guard let route=PhoneRoute(url:url) else {return}
-        open(route)
     }
     func open(_ row:PublishedAgentRow) {
         guard let publisher=snapshot.feed?.publisherID,let widget=selectedWidget else {return}
@@ -167,7 +203,7 @@ import WokintoshCore
         guard !preview,!performingAction,let repository else {return}
         var command=receipt;command.id=UUID();command.issuedAt=Date()
         performingAction=true;defer {performingAction=false}
-        do {apply(try await repository.perform(command));WidgetCenter.shared.reloadAllTimelines()}
+        do {_=try await repository.perform(command);try readLatest();WidgetCenter.shared.reloadAllTimelines()}
         catch {
             try? readLatest();message=error.localizedDescription
             WidgetCenter.shared.reloadAllTimelines()

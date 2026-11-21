@@ -361,7 +361,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
                 decorateAgentControls(&agents,widgetID:widget.id)
                 return PublishedWidget(id:widget.id,name:widgetSettingsName(widget,in:document.widgets),agents:agents)
             }
-            try publisher.publish(payloads,publisherName:feeds["local"]?.displayName ?? "Wokintosh",preview:document.previewMode,at:now)
+            try publisher.publish(payloads,publisherName:feeds["local"]?.displayName ?? "Wokintosh",preview:document.previewMode,at:now,finalize:{feed in
+                for index in feed.widgets.indices {
+                    guard var agents=feed.widgets[index].agents else {continue}
+                    self.decorateAgentControls(&agents,widgetID:feed.widgets[index].id)
+                    feed.widgets[index].agents=agents
+                }
+            })
         } catch { /* The publisher presents its own error state; never interrupt the dashboard poll. */ }
     }
     func system(for widget: Widget) -> (String, SystemReading, Bool) {

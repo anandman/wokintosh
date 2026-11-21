@@ -112,6 +112,59 @@ final class PhoneStoreTests:XCTestCase {
         store.handle(PhoneWidgetRoute(publisherID:UUID(),widgetID:fixture.route.widgetID).url)
         XCTAssertNil(store.earlierSelection)
     }
+    @MainActor func testCompletedActionCannotRestoreAnUnpairedMainActorView()async throws {
+        let fixture=try linkedFixture(provider:"codex",url:"codex://threads/fixture")
+        defer{try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
+        let original=try XCTUnwrap(fixture.repository.cache.load()),gate=StoreActionGate()
+        let repository=PhoneRepository(cache:fixture.repository.cache,credentials:fixture.repository.credentials,client:gate)
+        let store=PhoneStore(repository:repository)
+        let command=AgentControlCommand(publisherID:original.publisherID,widgetID:fixture.route.widgetID,rowID:fixture.row.id,action:.markBlocked,revision:String(repeating:"a",count:64))
+        let task=Task {await store.perform(command)};await gate.waitUntilStarted()
+        let result=PublishedWidgetFeed(publisherID:original.publisherID,publisherName:"After action",publishedAt:Date(),widgets:original.widgets)
+        let delivery=Task.detached {await gate.finish(result)}
+        // Hold the main actor while the repository commits and returns off-actor.
+        waitForActionCache(repository.cache)
+        XCTAssertEqual(repository.cache.load()?.publisherName,"After action")
+        store.unpair()
+        await delivery.value;await task.value
+        XCTAssertNil(store.snapshot.feed);XCTAssertFalse(store.snapshot.paired)
+        XCTAssertNil(repository.cache.load())
+    }
+    @MainActor func testWidgetRouteClosesNestedSettingsBeforeShowingEarlierDone()throws {
+        let fixture=try linkedFixture(provider:"codex",url:"codex://threads/fixture")
+        defer{try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
+        let store=PhoneStore(repository:fixture.repository)
+        store.settingsVisible=true;store.settingsSheet = .scan
+        let route=PhoneWidgetRoute(publisherID:fixture.route.publisherID,widgetID:fixture.route.widgetID)
+        store.handle(route.url)
+        XCTAssertNil(store.settingsSheet);XCTAssertTrue(store.settingsVisible);XCTAssertNil(store.earlierSelection)
+        store.settingsSheetDismissed()
+        XCTAssertFalse(store.settingsVisible);XCTAssertNil(store.earlierSelection)
+        store.settingsDismissed()
+        XCTAssertEqual(store.earlierSelection,route)
+    }
+    @MainActor func testWidgetEarlierRouteWaitsForSessionDetailsDismissal()throws {
+        let fixture=try linkedFixture(provider:"codex",url:"codex://threads/fixture")
+        defer{try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
+        let store=PhoneStore(repository:fixture.repository)
+        store.showSessionDetails(fixture.row)
+        let route=PhoneWidgetRoute(publisherID:fixture.route.publisherID,widgetID:fixture.route.widgetID)
+        store.handle(route.url)
+        XCTAssertNil(store.selectedSession);XCTAssertNil(store.earlierSelection)
+        store.sessionDetailsDismissed()
+        XCTAssertEqual(store.earlierSelection,route)
+    }
+    @MainActor func testRepeatedWidgetRouteStillWaitsForSettingsDismissal()throws {
+        let fixture=try linkedFixture(provider:"codex",url:"codex://threads/fixture")
+        defer{try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
+        let store=PhoneStore(repository:fixture.repository)
+        store.settingsVisible=true
+        let route=PhoneWidgetRoute(publisherID:fixture.route.publisherID,widgetID:fixture.route.widgetID)
+        store.handle(route.url);store.handle(route.url)
+        XCTAssertNil(store.earlierSelection)
+        store.settingsDismissed()
+        XCTAssertEqual(store.earlierSelection,route)
+    }
     private func linkedFixture(provider:String,url:String,authorized:Bool=true)throws->(repository:PhoneRepository,route:PhoneRoute,row:PublishedAgentRow) {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let credentials=StoreTestCredentials();credentials.value=try pairing()
@@ -127,4 +180,19 @@ final class PhoneStoreTests:XCTestCase {
     private func pairing()throws->PhonePairing {
         try PhonePairing(endpoint:"https://example.ts.net:9443/wokintosh/v1/widgets",token:String(repeating:"A",count:43))
     }
+}
+
+private actor StoreActionGate:PhoneFetching {
+    var response:CheckedContinuation<PublishedWidgetFeed,Error>?
+    var started:CheckedContinuation<Void,Never>?
+    func fetch(_ pairing:PhonePairing)async throws->PublishedWidgetFeed {throw PhoneFetchError.unavailable}
+    func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {
+        try await withCheckedThrowingContinuation {response=$0;started?.resume();started=nil}
+    }
+    func waitUntilStarted()async {if response != nil {return};await withCheckedContinuation {started=$0}}
+    func finish(_ feed:PublishedWidgetFeed) {response?.resume(returning:feed);response=nil}
+}
+private func waitForActionCache(_ cache:PhoneSnapshotCache) {
+    let end=Date().addingTimeInterval(3)
+    while cache.load()?.publisherName != "After action",Date()<end {Thread.sleep(forTimeInterval:0.001)}
 }

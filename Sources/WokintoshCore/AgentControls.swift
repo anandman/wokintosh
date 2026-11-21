@@ -52,7 +52,7 @@ public enum AgentControlError:Error,Equatable,LocalizedError {
         case .invalid:return "This Agent action could not be read."
         case .disabled:return "Agent controls are unavailable. Enable Allow Agent controls on your publishing Mac."
         case .conflict:return "This session has changed. Refresh the list and try again."
-        case .unconfirmed:return "The action was not confirmed. Refresh the list before trying again."
+        case .unconfirmed:return "The action was not confirmed. It may have been saved on your Mac. Refresh to check before retrying."
         case .busy:return "Another Agent action is in progress. Try again shortly."
         }
     }

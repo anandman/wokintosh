@@ -101,7 +101,7 @@ struct PhoneEarlierDoneView:View {
                 }.frame(maxWidth:.infinity,alignment:.leading)
             }
         }
-        .sheet(item:$store.selectedSession) {row in PhoneSessionDetail(store:store,row:row)}
+        .sheet(item:$store.selectedSession,onDismiss:store.sessionDetailsDismissed) {row in PhoneSessionDetail(store:store,row:row)}
         .alert("Wokintosh",isPresented:Binding(get:{store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message:{Text(store.message ?? "")}
     }
 }

@@ -22,6 +22,7 @@ import WokintoshCore
 
 extension DashboardStore {
     func decorateAgentControls(_ agents:inout PublishedAgents,widgetID:UUID) {
+        agents.controls=nil;agents.earlierControls=nil
         guard publisher.options.allowAgentControls,!document.previewMode else {return}
         func decorate(_ row:PublishedAgentRow)->PublishedAgentRow {
             var copy=row

@@ -17,9 +17,6 @@ import WokintoshCore
 }
 struct PhoneRootView:View {
     @ObservedObject var store:PhoneStore
-    @State private var scanner=false
-    @State private var pasteCode=false
-    @State private var showSettings=false
     var body:some View {
         VStack(spacing:0) {
             HStack(spacing:9) {
@@ -27,9 +24,9 @@ struct PhoneRootView:View {
                 Text("Wokintosh").font(PhonePalette.font(22,bold:true,relativeTo:.title2))
                 Spacer(minLength:4)
                 if store.refreshing || store.performingAction {ProgressView().tint(.black).padding(10)}
-                Button {Task {await store.refresh()}} label: {Image(systemName:"arrow.clockwise").font(.system(size:19)).frame(width:44,height:44)}
+                Button {Task {await store.refresh(acknowledgingActionError:true)}} label: {Image(systemName:"arrow.clockwise").font(.system(size:19)).frame(width:44,height:44)}
                     .buttonStyle(.plain).accessibilityLabel("Refresh").disabled(store.refreshing || store.performingAction)
-                Button {showSettings=true} label: {Image("PhoneMac").resizable().interpolation(.none).scaledToFit().frame(width:22,height:22).frame(width:44,height:44)}
+                Button {store.settingsVisible=true} label: {Image("PhoneMac").resizable().interpolation(.none).scaledToFit().frame(width:22,height:22).frame(width:44,height:44)}
                     .buttonStyle(.plain).accessibilityLabel("Settings")
             }.padding(.horizontal,14).padding(.vertical,3).foregroundStyle(.black)
                 .background(PhonePalette.chrome.ignoresSafeArea(edges:.top))
@@ -39,14 +36,12 @@ struct PhoneRootView:View {
                     if store.preview {Text("SAMPLE DATA").font(.caption.bold()).padding(5).background(PhonePalette.paper).foregroundStyle(.black)}
                     if store.snapshot.paired {pairedContent} else {pairingContent}
                 }.frame(maxWidth:940).padding(14).frame(maxWidth:.infinity)
-            }.refreshable {await store.refresh()}
+            }.refreshable {await store.refresh(acknowledgingActionError:true)}
         }.background(PhonePalette.desktop.ignoresSafeArea()).preferredColorScheme(.light)
-            .sheet(isPresented:$showSettings) {PhoneSettingsView(store:store)}
-            .sheet(isPresented:$scanner) {PhoneScanSheet {text in scanner=false;store.pair(text)}}
-            .sheet(isPresented:$pasteCode) {PhonePasteSheet {store.pair($0)}}
-            .sheet(item:Binding(get:{store.earlierSelection==nil ? store.selectedSession : nil},set:{store.selectedSession=$0})) {row in PhoneSessionDetail(store:store,row:row)}
-            .sheet(item:$store.earlierSelection) {selection in PhoneEarlierDoneView(store:store,selection:selection)}
-            .alert("Wokintosh",isPresented:Binding(get:{!showSettings && store.earlierSelection==nil && store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
+            .sheet(isPresented:$store.settingsVisible,onDismiss:store.settingsDismissed) {PhoneSettingsView(store:store)}
+            .sheet(item:Binding(get:{store.earlierSelection==nil ? store.selectedSession : nil},set:{store.selectedSession=$0}),onDismiss:store.sessionDetailsDismissed) {row in PhoneSessionDetail(store:store,row:row)}
+            .sheet(item:$store.earlierSelection,onDismiss:store.earlierDoneDismissed) {selection in PhoneEarlierDoneView(store:store,selection:selection)}
+            .alert("Wokintosh",isPresented:Binding(get:{!store.settingsVisible && store.earlierSelection==nil && store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
 
     }
     private var pairingContent:some View {
@@ -59,10 +54,8 @@ struct PhoneRootView:View {
                         Text("Claude Code and Codex, across your machines.").foregroundStyle(PhonePalette.secondary)
                     }
                 }
-                Text("On your Mac, open Wokintosh Settings → iPhone & iPad. Choose your Agent widgets, then show the pairing code.")
-                Button {scanner=true} label: {Label("Scan pairing code",systemImage:"qrcode.viewfinder").frame(maxWidth:.infinity)}.buttonStyle(PhoneRetroButtonStyle(prominent:true))
-                Button {pasteCode=true} label: {Text("Paste pairing code").frame(maxWidth:.infinity)}.buttonStyle(PhoneRetroButtonStyle())
-                Text("Keep Tailscale connected on both devices.").font(PhonePalette.font(14,relativeTo:.caption)).foregroundStyle(PhonePalette.secondary)
+                Text("Connect to your publishing Mac in Settings to see your Agent widgets here.")
+                Button {store.settingsVisible=true} label: {Text("Open Settings").frame(maxWidth:.infinity)}.buttonStyle(PhoneRetroButtonStyle(prominent:true))
             }.font(PhonePalette.font()).padding(18)
         }
     }

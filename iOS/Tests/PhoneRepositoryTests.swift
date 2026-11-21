@@ -126,6 +126,19 @@ final class PhoneRepositoryTests:XCTestCase {
             XCTAssertNotNil(credentials.value);XCTAssertNil(cache.load())
         }
     }
+    func testExplicitRefreshAcknowledgesUnconfirmedActionButWidgetRefreshKeepsItVisible()async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let cache=PhoneSnapshotCache(directory:root),credentials=MemoryPhoneCredentials(),feed=PhoneFixtures.feed()
+        credentials.value=try pairing();try cache.store(feed,fetchedAt:Date())
+        let failed=PhoneRepository(cache:cache,credentials:credentials,client:FailingActionClient())
+        let command=AgentControlCommand(publisherID:feed.publisherID,widgetID:feed.widgets[0].id,rowID:"fixture",action:.reviewDone,revision:String(repeating:"a",count:64))
+        do {_=try await failed.perform(command);XCTFail("Expected uncertainty")} catch {XCTAssertEqual(error as? AgentControlError,.unconfirmed)}
+        XCTAssertTrue(try failed.snapshot().actionMessage?.contains("not confirmed")==true)
+        let refreshing=PhoneRepository(cache:cache,credentials:credentials,client:ImmediatePhoneClient(feed:feed))
+        let automatic=try await refreshing.refresh();XCTAssertNotNil(automatic.actionMessage)
+        let explicit=try await refreshing.refresh(acknowledgingActionError:true);XCTAssertNil(explicit.actionMessage)
+    }
     func pairing()throws->PhonePairing {try PhonePairing(endpoint:"https://display.example.ts.net:9443/wokintosh/v1/widgets",token:String(repeating:"A",count:43))}
     func testUnpairedRepositoryNeverReturnsAStalePrivateFeed() throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -169,4 +182,9 @@ private struct ActionPhoneClient:PhoneFetching {
     let feed:PublishedWidgetFeed
     func fetch(_ pairing:PhonePairing)async throws->PublishedWidgetFeed {feed}
     func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {feed}
+}
+
+private struct FailingActionClient:PhoneFetching {
+    func fetch(_ pairing:PhonePairing)async throws->PublishedWidgetFeed {throw PhoneFetchError.unavailable}
+    func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {throw URLError(.networkConnectionLost)}
 }

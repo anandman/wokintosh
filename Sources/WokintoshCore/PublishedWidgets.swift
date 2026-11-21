@@ -144,7 +144,7 @@ public struct PublishedWidgetFeed:Codable,Equatable,Sendable {
         }
         return try decoder.decode(Self.self,from:data)
     }
-    public func encoded()throws->Data {
+    public func encoded(finalize:((inout PublishedWidgetFeed)->Void)?=nil)throws->Data {
         guard widgets.count<=128,Set(widgets.map(\.id)).count==widgets.count,
               widgets.allSatisfy({$0.agents?.isValid == true}) else {throw WidgetFeedError.invalid}
         let encoder=JSONEncoder();encoder.dateEncodingStrategy = .iso8601;encoder.outputFormatting=[.sortedKeys]
@@ -152,20 +152,33 @@ public struct PublishedWidgetFeed:Codable,Equatable,Sendable {
         // ordered row prefixes, one row per widget per round. Each candidate row is
         // measured once; the full feed is encoded only after the budget is assigned.
         var bounded=self
-        for index in widgets.indices {bounded.widgets[index].agents!.rows=[]}
+        for index in widgets.indices {
+            bounded.widgets[index].agents!.rows=[]
+            if bounded.widgets[index].agents!.earlierRows != nil {bounded.widgets[index].agents!.earlierRows=[]}
+        }
         let metadata=try encoder.encode(bounded)
         guard metadata.count<=Self.maximumBytes else {throw WidgetFeedError.oversized}
         var remaining=Self.maximumBytes-metadata.count
         var closed=Set<Int>()
         for offset in 0..<128 {
-            for index in widgets.indices where !closed.contains(index) {
-                guard let rows=widgets[index].agents?.rows,offset<rows.count else {closed.insert(index);continue}
-                let cost=try encoder.encode(rows[offset]).count+(offset==0 ? 0 : 1)
-                guard cost<=remaining else {closed.insert(index);continue}
-                bounded.widgets[index].agents!.rows.append(rows[offset]);remaining-=cost
+            for index in widgets.indices {
+                for kind in 0..<2 where !closed.contains(index*2+kind) {
+                    let rows=kind==0 ? widgets[index].agents!.rows : (widgets[index].agents!.earlierRows ?? [])
+                    let slot=index*2+kind
+                    guard offset<rows.count else {closed.insert(slot);continue}
+                    let cost=try encoder.encode(rows[offset]).count+(offset==0 ? 0 : 1)
+                    guard cost<=remaining else {closed.insert(slot);continue}
+                    if kind==0 {bounded.widgets[index].agents!.rows.append(rows[offset])}
+                    else {bounded.widgets[index].agents!.earlierRows!.append(rows[offset])}
+                    remaining-=cost
+                }
             }
-            if closed.count==widgets.count {break}
+            if closed.count==widgets.count*2 {break}
         }
+        // Receipts are issued for these exact transmitted prefixes, never the
+        // larger pre-budget arrays. The final size check also bounds the callback.
+        finalize?(&bounded)
+        guard bounded.widgets.count<=128,Set(bounded.widgets.map(\.id)).count==bounded.widgets.count,bounded.widgets.allSatisfy({$0.agents?.isValid == true}) else {throw WidgetFeedError.invalid}
         let data=try encoder.encode(bounded)
         guard data.count<=Self.maximumBytes else {throw WidgetFeedError.oversized}
         return data

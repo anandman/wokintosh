@@ -3,8 +3,6 @@ import WokintoshCore
 
 struct PhoneSettingsView:View {
     @ObservedObject var store:PhoneStore
-    @State private var scanner=false
-    @State private var pasteCode=false
     @State private var confirmUnpair=false
     var body:some View {
         PhoneModal(title:"Settings") {
@@ -21,8 +19,8 @@ struct PhoneSettingsView:View {
                             Button("Unpair this device",role:.destructive) {confirmUnpair=true}.frame(minHeight:44).tint(PhonePalette.attention)
                         } else {
                             Text("Show the pairing code in Wokintosh Settings → iPhone & iPad on your Mac.")
-                            Button("Scan pairing code",systemImage:"qrcode.viewfinder") {scanner=true}.buttonStyle(PhoneRetroButtonStyle(prominent:true))
-                            Button("Paste pairing code") {pasteCode=true}.buttonStyle(PhoneRetroButtonStyle())
+                            Button("Scan pairing code",systemImage:"qrcode.viewfinder") {store.settingsSheet = .scan}.buttonStyle(PhoneRetroButtonStyle(prominent:true))
+                            Button("Paste pairing code") {store.settingsSheet = .paste}.buttonStyle(PhoneRetroButtonStyle())
                         }
                     }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
                 }
@@ -35,8 +33,12 @@ struct PhoneSettingsView:View {
                 }
             }
         }
-        .sheet(isPresented:$scanner) {PhoneScanSheet {scanner=false;store.pair($0)}}
-        .sheet(isPresented:$pasteCode) {PhonePasteSheet {store.pair($0)}}
+        .sheet(item:$store.settingsSheet,onDismiss:store.settingsSheetDismissed) {sheet in
+            switch sheet {
+            case .scan:PhoneScanSheet {store.settingsSheet=nil;store.pair($0)}
+            case .paste:PhonePasteSheet {store.pair($0)}
+            }
+        }
         .confirmationDialog("Unpair this device and clear its saved widget data?",isPresented:$confirmUnpair,titleVisibility:.visible) {Button("Unpair",role:.destructive) {store.unpair()}}
         .alert("Wokintosh",isPresented:Binding(get:{store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message:{Text(store.message ?? "")}
     }

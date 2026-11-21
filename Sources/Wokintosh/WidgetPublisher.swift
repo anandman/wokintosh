@@ -101,13 +101,13 @@ struct PublisherOptions:Codable,Equatable {
         revoke();options=next
         do {try persist(next)} catch {stopAfterFailure("Publishing stopped because its selections could not be saved.");throw error}
     }
-    func publish(_ widgets:[PublishedWidget],publisherName:String="Wokintosh",preview:Bool=false,at now:Date=Date())throws {
+    func publish(_ widgets:[PublishedWidget],publisherName:String="Wokintosh",preview:Bool=false,at now:Date=Date(),finalize:((inout PublishedWidgetFeed)->Void)?=nil)throws {
         self.preview=preview
         guard options.enabled && !preview else {revoke();status=preview && options.enabled ? "Publishing paused in Preview" : "Publishing is off";return}
         do {
             try ensureToken()
             let selected=widgets.filter{options.selectedWidgetIDs.contains($0.id)}
-            let data=try PublishedWidgetFeed(publisherID:options.publisherID,publisherName:publisherName,publishedAt:now,widgets:selected).encoded()
+            let data=try PublishedWidgetFeed(publisherID:options.publisherID,publisherName:publisherName,publishedAt:now,widgets:selected).encoded(finalize:finalize)
             publishedData=data
             if servesNetwork {
                 if let server {server.update(body:data)} else {

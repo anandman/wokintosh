@@ -115,6 +115,24 @@ private final class AgentTestCredentials:PublisherCredentialStore {
         XCTAssertTrue(s.document.completions.pending.isEmpty)
     }
     private func currentData(_ store:DashboardStore)throws->Data {try XCTUnwrap(store.publisher.publishedData)}
+    func testBulkReceiptCannotExpandWhenAnotherWidgetFreesBytes()throws {
+        let(s,root,_)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let target=SessionOpenTarget(primary:"https://example.com/"+String(repeating:"x",count:3800),fallback:"https://example.com/"+String(repeating:"y",count:3800))
+        var widgets=(0..<2).map {_ in Widget(kind:.agents,frame:WidgetFrame(x:0,y:0,width:0.5,height:0.5))}
+        widgets[0].hostID="target";widgets[1].hostID="other";s.document.widgets=widgets
+        var options=s.publisher.options;options.selectedWidgetIDs=Set(widgets.map(\.id));try s.publisher.setOptions(options,widgets:widgets)
+        var tracker=CompletionTracker();tracker.ingest([],connectedHostIDs:["target","other"],at:now.addingTimeInterval(-1))
+        let rows=["target","other"].flatMap {host in (0..<100).map {i in SessionRow(hostID:host,hostName:host,session:AgentSession(id:"session-\(i)",provider:"codex",title:"Task",project:"Project",state:.finished,updatedAt:now,openURLs:SessionOpenURLs(macOS:target,iOS:target)))}}
+        tracker.ingest(rows,at:now);s.document.completions=tracker;s.publishWidgets(at:now)
+        let f=try feed(s),old=try XCTUnwrap(f.widgets.first(where:{$0.id==widgets[0].id})?.agents)
+        XCTAssertLessThan(old.rows.count,100)
+        let c=AgentControlCommand(publisherID:f.publisherID,widgetID:widgets[0].id,rowID:nil,action:.reviewAllDone,revision:try XCTUnwrap(old.controls?.revision))
+        options.selectedWidgetIDs=[widgets[0].id];try s.publisher.setOptions(options,widgets:widgets);s.publishWidgets(at:now)
+        let expanded=try XCTUnwrap(try feed(s).widgets.first?.agents)
+        XCTAssertGreaterThan(expanded.rows.count,old.rows.count)
+        XCTAssertThrowsError(try s.applyAgentControl(c,at:now))
+        XCTAssertEqual(s.document.completions.pending.filter{$0.hostID=="target"}.count,100)
+    }
     func testPersistenceFailureKeepsNoticeUnreviewed()throws {
         let(s,root,_)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
         let c=try command(s,action:.reviewDone)
