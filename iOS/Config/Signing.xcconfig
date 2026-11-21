@@ -1,0 +1,5 @@
+// Defaults preserve the project's development identity. Override locally for your account.
+DEVELOPMENT_TEAM =
+WOKINTOSH_PHONE_BUNDLE_ID = dev.wokintosh.phone
+WOKINTOSH_PHONE_APP_GROUP_ID = group.dev.wokintosh.phone.shared
+#include? "Signing.local.xcconfig"

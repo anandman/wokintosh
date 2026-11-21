@@ -93,6 +93,7 @@
 		4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneScannerView.swift; sourceTree = "<group>"; };
 		5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WokintoshPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		640A92C7704BD4152B944052 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		64E84B7D32B3715D7AAC142C /* wokintosh */ = {isa = PBXFileReference; lastKnownFileType = folder; name = wokintosh; path = ..; sourceTree = SOURCE_ROOT; };
 		7450CB684FF601B5982226A8 /* PhoneSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSheets.swift; sourceTree = "<group>"; };
 		8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetModels.swift; sourceTree = "<group>"; };
@@ -139,6 +140,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		24CEF47F2371EE8173D8A1EC /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				640A92C7704BD4152B944052 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		37CE175FC322EE3382CA90B3 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -162,6 +171,7 @@
 			children = (
 				62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */,
 				886F9C859CBB1F51FC184C93 /* App */,
+				24CEF47F2371EE8173D8A1EC /* Config */,
 				67F9548F38A7A737FDD7C7CE /* Packages */,
 				9A79C60F1ADADE1922C5916D /* Shared */,
 				37CE175FC322EE3382CA90B3 /* Tests */,
@@ -298,15 +308,15 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4D51A56910F774E12291522B = {
-						DevelopmentTeam = YOUR_TEAM_ID;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					64C482032F39E620E8F8563B = {
-						DevelopmentTeam = YOUR_TEAM_ID;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					8F98B15BCFE8462D35EF4E93 = {
-						DevelopmentTeam = YOUR_TEAM_ID;
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -444,7 +454,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.agents;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID).agents";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -461,7 +471,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID).tests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -477,7 +487,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID).tests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -494,7 +504,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.agents;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID).agents";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -503,6 +513,7 @@
 		};
 		B348400CD4354E2A365F9C7D /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 640A92C7704BD4152B944052 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -538,7 +549,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -565,6 +575,7 @@
 		};
 		CCC23D81B1F72927E78D8743 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 640A92C7704BD4152B944052 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -600,7 +611,6 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -644,7 +654,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -662,7 +672,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(WOKINTOSH_PHONE_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

@@ -62,32 +62,7 @@ fi
 /usr/bin/codesign --verify --deep --strict "$wokintosh_phone_app"
 # An archive can be signed successfully while missing the capabilities shared by
 # the app and extension. Refuse installation until both signed bundles have them.
-python3 - "$wokintosh_phone_app" <<'PYENTITLEMENTS'
-import pathlib,plistlib,subprocess,sys
-app=pathlib.Path(sys.argv[1])
-expected_group='group.dev.wokintosh.phone.shared'
-teams=set()
-prefixes=set()
-for bundle,identifier in [(app,'dev.wokintosh.phone'),(app/'PlugIns/WokintoshAgentWidget.appex','dev.wokintosh.phone.agents')]:
-    try:
-        ent=plistlib.loads(subprocess.check_output(['/usr/bin/codesign','-d','--entitlements','-','--xml',str(bundle)],stderr=subprocess.DEVNULL))
-    except (subprocess.CalledProcessError,plistlib.InvalidFileException):
-        raise SystemExit('The app and widget need valid signed iOS/iPadOS entitlements. Repair Signing & Capabilities in Xcode.')
-    team=ent.get('com.apple.developer.team-identifier')
-    application=ent.get('application-identifier','')
-    if not team or not application.endswith('.'+identifier):
-        raise SystemExit('The signed app and widget need their explicit iOS/iPadOS provisioning profiles.')
-    prefix=application[:-len(identifier)]
-    shared=prefix+'dev.wokintosh.phone.shared'
-    info=plistlib.loads((bundle/'Info.plist').read_bytes())
-    if (expected_group not in ent.get('com.apple.security.application-groups',[]) or
-        shared not in ent.get('keychain-access-groups',[]) or
-        info.get('WokintoshKeychainAccessGroup') != shared):
-        raise SystemExit('The signed app and widget are missing matching App Group/Keychain sharing. Repair Signing & Capabilities in Xcode.')
-    teams.add(team);prefixes.add(prefix)
-if len(teams)!=1 or len(prefixes)!=1:
-    raise SystemExit('The app and widget must use the same developer team.')
-PYENTITLEMENTS
+python3 "$wokintosh_phone_root/script/validate_iphone.py" "$wokintosh_phone_app"
 if $wokintosh_phone_build_only; then
     printf 'Prepared %s\n' "$wokintosh_phone_app"
 else

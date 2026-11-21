@@ -6,10 +6,12 @@ options:
 packages:
   Wokintosh:
     path: ..
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
 settings:
   base:
     SWIFT_VERSION: '5.0'
-    DEVELOPMENT_TEAM: YOUR_TEAM_ID
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: '1,2'
     MARKETING_VERSION: '0.1.0'
@@ -30,7 +32,7 @@ targets:
         embed: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.wokintosh.phone
+        PRODUCT_BUNDLE_IDENTIFIER: $(WOKINTOSH_PHONE_BUNDLE_ID)
         TARGETED_DEVICE_FAMILY: '1,2'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
@@ -47,15 +49,16 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: Scan the private pairing code shown by Wokintosh on your Mac.
-        WokintoshKeychainAccessGroup: $(AppIdentifierPrefix)dev.wokintosh.phone.shared
+        WokintoshAppGroupIdentifier: $(WOKINTOSH_PHONE_APP_GROUP_ID)
+        WokintoshKeychainAccessGroup: $(AppIdentifierPrefix)$(WOKINTOSH_PHONE_BUNDLE_ID).shared
         CFBundleURLTypes:
           - CFBundleURLName: dev.wokintosh.phone
             CFBundleURLSchemes: [wokintosh]
     entitlements:
       path: App/WokintoshPhone.entitlements
       properties:
-        com.apple.security.application-groups: [group.dev.wokintosh.phone.shared]
-        keychain-access-groups: [$(AppIdentifierPrefix)dev.wokintosh.phone.shared]
+        com.apple.security.application-groups: [$(WOKINTOSH_PHONE_APP_GROUP_ID)]
+        keychain-access-groups: [$(AppIdentifierPrefix)$(WOKINTOSH_PHONE_BUNDLE_ID).shared]
   WokintoshAgentWidget:
     type: app-extension
     platform: iOS
@@ -67,7 +70,7 @@ targets:
         product: WokintoshCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.wokintosh.phone.agents
+        PRODUCT_BUNDLE_IDENTIFIER: $(WOKINTOSH_PHONE_BUNDLE_ID).agents
         TARGETED_DEVICE_FAMILY: '1,2'
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
@@ -76,14 +79,15 @@ targets:
       properties:
         CFBundleDisplayName: Wokintosh Agents
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        WokintoshKeychainAccessGroup: $(AppIdentifierPrefix)dev.wokintosh.phone.shared
+        WokintoshAppGroupIdentifier: $(WOKINTOSH_PHONE_APP_GROUP_ID)
+        WokintoshKeychainAccessGroup: $(AppIdentifierPrefix)$(WOKINTOSH_PHONE_BUNDLE_ID).shared
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: Widget/WokintoshAgentWidget.entitlements
       properties:
-        com.apple.security.application-groups: [group.dev.wokintosh.phone.shared]
-        keychain-access-groups: [$(AppIdentifierPrefix)dev.wokintosh.phone.shared]
+        com.apple.security.application-groups: [$(WOKINTOSH_PHONE_APP_GROUP_ID)]
+        keychain-access-groups: [$(AppIdentifierPrefix)$(WOKINTOSH_PHONE_BUNDLE_ID).shared]
   WokintoshPhoneTests:
     type: bundle.unit-test
     platform: iOS
@@ -98,7 +102,7 @@ targets:
         product: WokintoshCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.wokintosh.phone.tests
+        PRODUCT_BUNDLE_IDENTIFIER: $(WOKINTOSH_PHONE_BUNDLE_ID).tests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   WokintoshPhone:

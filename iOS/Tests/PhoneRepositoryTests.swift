@@ -32,6 +32,13 @@ private actor SuspendedPhoneClient:PhoneFetching {
 }
 
 final class PhoneRepositoryTests:XCTestCase {
+    func testAppGroupComesFromBuildConfiguration()throws {
+        XCTAssertEqual(try PhoneRepository.appGroupIdentifier(in:["WokintoshAppGroupIdentifier":"group.org.example.dashboard.shared"]),"group.org.example.dashboard.shared")
+        for info:[String:Any] in [[:],["WokintoshAppGroupIdentifier":""],["WokintoshAppGroupIdentifier":"$(WOKINTOSH_PHONE_APP_GROUP_ID)"],["WokintoshAppGroupIdentifier":"unconfigured"]] {
+            XCTAssertThrowsError(try PhoneRepository.appGroupIdentifier(in:info))
+        }
+    }
+
     func testOldRefreshCannotModifyANewPairingAcrossRepositoryInstances() async throws {
         for outcome in 0..<6 {
             let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

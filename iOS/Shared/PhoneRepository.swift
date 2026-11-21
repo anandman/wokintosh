@@ -28,8 +28,14 @@ struct PhoneRepository:Sendable {
     let cache:PhoneSnapshotCache
     let credentials:any PhoneCredentialStore
     let client:any PhoneFetching
+    static func appGroupIdentifier(in info:[String:Any]?)throws->String {
+        guard let group=info?["WokintoshAppGroupIdentifier"] as? String,
+              group.hasPrefix("group."),!group.contains("$("),group.rangeOfCharacter(from:.whitespacesAndNewlines)==nil else {throw PhoneStorageError.notConfigured}
+        return group
+    }
     static func live()throws->PhoneRepository {
-        guard let directory=FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:"group.dev.wokintosh.phone.shared") else {throw PhoneStorageError.notConfigured}
+        let group=try appGroupIdentifier(in:Bundle.main.infoDictionary)
+        guard let directory=FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:group) else {throw PhoneStorageError.notConfigured}
         return PhoneRepository(cache:PhoneSnapshotCache(directory:directory.appendingPathComponent("PublishedWidgets",isDirectory:true)),
                                credentials:try KeychainPhoneCredentials(),client:PhoneFeedClient())
     }

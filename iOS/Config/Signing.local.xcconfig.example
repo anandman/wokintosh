@@ -1,0 +1,4 @@
+// Copy to Signing.local.xcconfig, then use identifiers owned by your team.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+WOKINTOSH_PHONE_BUNDLE_ID = com.example.yourhandle.wokintosh
+WOKINTOSH_PHONE_APP_GROUP_ID = group.com.example.yourhandle.wokintosh.shared

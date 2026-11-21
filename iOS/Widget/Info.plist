@@ -25,7 +25,9 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>WokintoshAppGroupIdentifier</key>
+	<string>$(WOKINTOSH_PHONE_APP_GROUP_ID)</string>
 	<key>WokintoshKeychainAccessGroup</key>
-	<string>$(AppIdentifierPrefix)dev.wokintosh.phone.shared</string>
+	<string>$(AppIdentifierPrefix)$(WOKINTOSH_PHONE_BUNDLE_ID).shared</string>
 </dict>
 </plist>

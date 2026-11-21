@@ -2,3 +2,6 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 .DS_Store
+
+# Developer-owned signing settings stay local.
+Config/Signing.local.xcconfig

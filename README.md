@@ -2,7 +2,7 @@
 
 A Color Classic-style dashboard for Codex and Claude Code agents, music, calendar, weather and system readings. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps), with its **5-inch 1280 × 720 display**.
 
-![Wokintosh showing Codex and Claude Code sessions across machines, attention and Done states, music, calendar and system readings](docs/images/dashboard.png)
+![Wokintosh preview showing Codex and Claude Code sessions across machines, attention and Done states, music, calendar and system readings](docs/images/dashboard.png)
 
 **[Download Wokintosh](https://github.com/anandman/wokintosh/releases/latest)** — Apple silicon, macOS 14 or later. The app and DMG are signed and notarized. The companion agent supports macOS and Linux.
 
@@ -33,6 +33,32 @@ Existing sessions are discovered automatically. Optional observer hooks improve 
 These features are planned for **Wokintosh 2.0**, pending further device testing. See the [unreleased changes](CHANGELOG.md).
 
 The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. These builds are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
+
+<p>
+  <img src="docs/images/ios-app.png" alt="Wokintosh iPhone app with classic Mac styling, fictional Claude and Codex sessions, and Done review controls" width="260">
+  <img src="docs/images/ios-widget-large.png" alt="Large Agent widget with matching provider icons and a Done checkmark" width="300">
+</p>
+
+![Full-width iPad Agent widget with fictional sessions](docs/images/ios-widget-ipad.png)
+
+*Current UI rendered with fictional preview data. [More widget sizes and dark appearance](docs/IPHONE.md#preview-gallery).*
+
+### Build with your own Xcode account
+
+Until distribution is arranged, the iOS/iPadOS app is **roll your own**. You need a Mac with **Xcode 27+**, an Apple Account signed into Xcode, and an iPhone/iPad running **iOS/iPadOS 17+**.
+
+```sh
+git clone https://github.com/anandman/wokintosh.git
+cd wokintosh
+cp iOS/Config/Signing.local.xcconfig.example iOS/Config/Signing.local.xcconfig
+open iOS/WokintoshPhone.xcodeproj
+```
+
+Edit the copied, Git-ignored configuration with your **Team ID**, a unique **app bundle ID** and your **App Group ID**. Select the **WokintoshPhone** scheme and your connected device, resolve signing for both the app and widget, and choose **Run**. The checked-in project needs no XcodeGen step. Free Personal Team installs expire after seven days; see [Apple's account limits](https://developer.apple.com/help/account/basics/about-your-developer-account).
+
+Build the publishing Mac from this checkout with `script/build_and_run.sh --build-only`, then quit the older app and open the staged app path it prints. The [complete guide](docs/IPHONE.md) covers identifiers, capabilities, Developer Mode, wireless installation, pairing and adding widgets. TestFlight distribution is a future decision.
+
+### Private publishing and controls
 
 The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. The publisher binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
 
