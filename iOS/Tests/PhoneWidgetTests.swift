@@ -3,6 +3,16 @@ import WidgetKit
 import WokintoshCore
 
 final class PhoneWidgetTests:XCTestCase {
+    func testProviderArtworkFitsWidgetKitRasterBudgetWithoutChangingAspectRatio()throws {
+        for name in ["PhoneCodex","PhoneClaude"] {
+            let source=try XCTUnwrap(UIImage(named:name,in:Bundle(for:Self.self),compatibleWith:nil))
+            let image=try XCTUnwrap(PhoneProviderArtwork.thumbnail(source))
+            let raster=try XCTUnwrap(image.cgImage)
+            XCTAssertLessThanOrEqual(raster.width,66)
+            XCTAssertLessThanOrEqual(raster.height,66)
+            XCTAssertEqual(Double(raster.width)/Double(raster.height),Double(source.size.width/source.size.height),accuracy:0.02)
+        }
+    }
     func testWideAndTallFamiliesUseTheMatchingPresentation() {
         XCTAssertEqual(AgentWidgetLayout.size(for:.systemExtraLarge),.extraLarge)
         XCTAssertTrue(AgentWidgetLayout.supportedFamilies.contains(.systemExtraLarge))

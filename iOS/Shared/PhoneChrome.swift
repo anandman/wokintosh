@@ -19,11 +19,26 @@ enum PhonePalette {
         .custom(bold ? "Arial-BoldMT" : "ArialMT",size:size,relativeTo:style)
     }
 }
+enum PhoneProviderArtwork {
+    // WidgetKit budgets the source raster, even when SwiftUI displays it at 22 pt.
+    // Keep the desktop artwork and cache a thumbnail sharp enough for a 3× display.
+    private static let codex=UIImage(named:"PhoneCodex").flatMap(thumbnail)
+    private static let claude=UIImage(named:"PhoneClaude").flatMap(thumbnail)
+    static func thumbnail(_ image:UIImage)->UIImage? {
+        image.preparingThumbnail(of:CGSize(width:66,height:66))
+    }
+    static func image(for provider:String)->UIImage? {provider=="codex" ? codex : claude}
+}
 struct PhoneProviderMark:View {
     let provider:String
     var body:some View {
-        Image(provider=="codex" ? "PhoneCodex" : "PhoneClaude").resizable().scaledToFit()
-            .accessibilityLabel(provider=="codex" ? "Codex" : "Claude Code")
+        Group {
+            if let image=PhoneProviderArtwork.image(for:provider) {
+                Image(uiImage:image).resizable().scaledToFit()
+            } else {
+                Image(systemName:provider=="codex" ? "terminal" : "sparkle").resizable().scaledToFit()
+            }
+        }.accessibilityLabel(provider=="codex" ? "Codex" : "Claude Code")
     }
 }
 struct PhoneStripes:View {
