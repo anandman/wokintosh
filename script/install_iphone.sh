@@ -66,7 +66,7 @@ teams=set()
 prefixes=set()
 for bundle,identifier in [(app,'dev.wokintosh.phone'),(app/'PlugIns/WokintoshAgentWidget.appex','dev.wokintosh.phone.agents')]:
     try:
-        ent=plistlib.loads(subprocess.check_output(['/usr/bin/codesign','-d','--entitlements','-',str(bundle)],stderr=subprocess.DEVNULL))
+        ent=plistlib.loads(subprocess.check_output(['/usr/bin/codesign','-d','--entitlements','-','--xml',str(bundle)],stderr=subprocess.DEVNULL))
     except (subprocess.CalledProcessError,plistlib.InvalidFileException):
         raise SystemExit('The app and widget need valid signed iOS/iPadOS entitlements. Repair Signing & Capabilities in Xcode.')
     team=ent.get('com.apple.developer.team-identifier')
