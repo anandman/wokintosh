@@ -2,24 +2,46 @@ import SwiftUI
 import WidgetKit
 import WokintoshCore
 
+/// WidgetKit supplies different content heights on iPad, iPhone and with larger text.
+/// Prefer the most rows whose intrinsic height fits; the footer always keeps its space.
 struct AgentWidgetContentView:View {
     let entry:AgentWidgetEntry
     let family:WidgetFamily
     @Environment(\.dynamicTypeSize) private var typeSize
     var body:some View {
+        let limit=family == .systemLarge ? (typeSize.isAccessibilitySize ? 3 : 5) : (typeSize.isAccessibilitySize ? 1 : 2)
+        ViewThatFits(in:.vertical) {
+            ForEach(Array((1...limit).reversed()),id:\.self) {count in
+                AgentWidgetCandidateView(entry:entry,family:family,maximumRows:count)
+            }
+            AgentWidgetCandidateView(entry:entry,family:family,maximumRows:1,showHeader:false)
+            AgentWidgetCandidateView(entry:entry,family:family,maximumRows:0)
+        }
+    }
+}
+
+private struct AgentWidgetCandidateView:View {
+    let entry:AgentWidgetEntry
+    let family:WidgetFamily
+    let maximumRows:Int
+    var showHeader=true
+    @Environment(\.dynamicTypeSize) private var typeSize
+    var body:some View {
         if let agents=entry.widget?.agents,let publisherID=entry.publisherID,let widget=entry.widget {
             let presentation=PhoneWidgetPresentation(agents:agents,size:family == .systemLarge ? .large : .medium,
-                                                     accessibility:typeSize.isAccessibilitySize,connection:entry.connection,at:entry.date)
+                                                     accessibility:typeSize.isAccessibilitySize,connection:entry.connection,at:entry.date,maximumRows:maximumRows)
             VStack(alignment:.leading,spacing:4) {
-                HStack(alignment:.firstTextBaseline) {
-                    Text(widget.name).font(.subheadline.bold()).lineLimit(1)
-                    Spacer(minLength:4)
-                    if presentation.attentionCount>0 {Text("\(presentation.attentionCount) need you").font(.caption.weight(.semibold)).foregroundStyle(.orange)}
-                    else if entry.sample {Text("SAMPLE").font(.caption2.bold()).foregroundStyle(.secondary)}
+                if showHeader {
+                    HStack(alignment:.firstTextBaseline) {
+                        Text(widget.name).font(.subheadline.bold()).lineLimit(1)
+                        Spacer(minLength:4)
+                        if presentation.attentionCount>0 {Text("\(presentation.attentionCount) need you").font(.caption.weight(.semibold)).foregroundStyle(.orange)}
+                        else if entry.sample {Text("SAMPLE").font(.caption2.bold()).foregroundStyle(.secondary)}
+                    }
+                    Divider()
                 }
-                Divider()
                 if presentation.rows.isEmpty {
-                    Text(agents.totalCount>0 ? "More sessions on your Mac" : (presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions")))
+                    Text(agents.totalCount>0 ? "Open session list" : (presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions")))
                         .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
                 } else {
                     ForEach(presentation.rows) {row in
@@ -41,7 +63,7 @@ struct AgentWidgetContentView:View {
         } else {
             VStack(alignment:.leading,spacing:8) {
                 Label("Wokintosh Agents",systemImage:"terminal").font(.headline)
-                Text(entry.paired ? "Choose a published Agent widget." : (entry.connection == .authorizationRequired ? "Pair your iPhone again." : "Pair with Wokintosh on your Mac."))
+                Text(entry.paired ? "Choose a published Agent widget." : (entry.connection == .authorizationRequired ? "Pair with your Mac again." : "Pair with Wokintosh on your Mac."))
                     .font(.subheadline).foregroundStyle(.secondary)
                 Link("Open Wokintosh",destination:URL(string:"wokintosh://dashboard")!).font(.subheadline.weight(.semibold))
             }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)

@@ -9,7 +9,7 @@ typealias DashboardWidget = WokintoshCore.Widget
 enum SettingsTab: String, CaseIterable, Identifiable {
     case widgets, connections, machines, phone, display, updates
     var id:String { rawValue }
-    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .phone:return "iPhone";case .display:return "Display";case .updates:return "Updates" } }
+    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .phone:return "iPhone & iPad";case .display:return "Display";case .updates:return "Updates" } }
 }
 
 @MainActor final class DashboardStore: ObservableObject {

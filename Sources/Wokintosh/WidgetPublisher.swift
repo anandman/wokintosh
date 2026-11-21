@@ -106,7 +106,7 @@ struct PublisherOptions:Codable,Equatable {
                     next.onStatus={ [weak self] status in Task { @MainActor [weak self] in if self?.serverID==id {self?.status=status} } }
                     server=next;next.start()
                 }
-            } else {status="Ready for your iPhone"}
+            } else {status="Ready for your iPhone or iPad"}
         } catch {revoke();status="Could not publish widgets";throw error}
     }
     func pairing()throws->PhonePairing? {
@@ -119,7 +119,7 @@ struct PublisherOptions:Codable,Equatable {
         do {
             let next=try Self.randomToken()
             try credentials.save(next,account:options.publisherID.uuidString)
-            token=next;status="Access key changed. Pair your iPhone again."
+            token=next;status="Access key changed. Pair your device again."
         } catch {
             var disabled=options;disabled.enabled=false;options=disabled
             try? persist(disabled);token=nil;status="Publishing stopped because the access key could not be changed."

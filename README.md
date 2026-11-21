@@ -24,21 +24,21 @@ Wokintosh shows individual Codex and Claude Code sessions across machines over S
 2. In **Settings → Machines**, enter the machine name and SSH destination.
 3. Choose **Install / Update over SSH**. Wokintosh finds a compatible Python, copies the collector and verifies the connection. Existing hooks and collector state are preserved.
 
-The remote machine needs **Python 3.10 or later**. Versioned installations are detected even when the default `python3` is older. Agent and system collection uses SSH and needs no remote GUI, account, API key or listening server. Optional iPhone publishing on the display Mac is a separate feature described below.
+The remote machine needs **Python 3.10 or later**. Versioned installations are detected even when the default `python3` is older. Agent and system collection uses SSH and needs no remote GUI, account, API key or listening server. Optional iPhone and iPad publishing on the display Mac is a separate feature described below.
 
 Existing sessions are discovered automatically. Optional observer hooks improve permission/input status; they are enabled separately on each machine. See [agent setup and troubleshooting](docs/ADVANCED.md) for hooks, upgrades and blocked-goal integration.
 
-## iPhone widgets — development preview
+## iPhone and iPad widgets — development preview
 
-The companion iPhone app and medium/large home-screen widgets are available as source builds for direct installation. They are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
+The universal iPhone/iPad app and medium/large home-screen widgets are available as source builds for direct installation. They are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
 
-The display Mac publishes only Agent widgets you select in **Settings → iPhone**. Publishing is off by default. A read-only server binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
+The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. A read-only server binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
 
-The phone mirrors the selected widget’s filters and attention-first ordering. It shows an **As of** time and stale/offline states; iOS schedules widget refreshes and may take longer than the requested 15 minutes. Viewing or opening a session does not review Done notices, send a prompt or approve an action.
+The paired device mirrors the selected widget’s filters and attention-first ordering. It shows an **As of** time and stale/offline states; iOS schedules widget refreshes and may take longer than the requested 15 minutes. Viewing or opening a session does not review Done notices, send a prompt or approve an action.
 
 Session links come from each collector. Claude opens with `claude://code/{bridge-id}`, with HTTPS as a backup; its Remote Control bridge ID is captured by observational hooks when available. This requires Remote Control to be connected and a Claude Code version exposing `CLAUDE_CODE_BRIDGE_SESSION_ID` (v2.1.199+). Wokintosh does not enable Remote Control or change `remoteControlAtStartup` automatically. Codex uses `codex://threads/{thread-id}` with the original thread UUID; this iOS route was verified on the initial user’s setup and remains an undocumented mobile contract. Missing links stay unavailable rather than guessing another session.
 
-Publishing choices and pairing credentials stay on their device and are excluded from setup exports and templates. Importing a setup requires selecting its widgets for publication again. Stop publishing to prevent new access; unpair in the phone app to clear its retained snapshot.
+Publishing choices and pairing credentials stay on their device and are excluded from setup exports and templates. Importing a setup requires selecting its widgets for publication again. Stop publishing to prevent new access; unpair in the companion app to clear its retained snapshot.
 
 ## Remote Now Playing and Calendar
 

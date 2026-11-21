@@ -28,9 +28,9 @@ struct PhoneRootView:View {
                 if store.preview {Text("SAMPLE DATA").font(.caption.bold()).foregroundStyle(.purple)}
                 if !store.snapshot.paired {
                     Section {
-                        Label(store.snapshot.state == .authorizationRequired ? "Pair your iPhone again" : "Your agents, at a glance",systemImage:"desktopcomputer.and.iphone")
+                        Label(store.snapshot.state == .authorizationRequired ? "Pair with your Mac again" : "Your agents, at a glance",systemImage:"desktopcomputer.and.iphone")
                             .font(.title3.bold()).padding(.vertical,8)
-                        Text("On your Mac, open Wokintosh Settings → iPhone, choose the Agent widgets to publish, then show the pairing code.")
+                        Text("On your Mac, open Wokintosh Settings → iPhone & iPad, choose the Agent widgets to publish, then show the pairing code.")
                         Button("Scan pairing code",systemImage:"qrcode.viewfinder") {scanner=true}
                         Button("Paste pairing code") {pasteCode=true}
                     }
@@ -62,11 +62,11 @@ struct PhoneRootView:View {
                             if agents.earlierDoneCount>0 {Text("Earlier Done · \(agents.earlierDoneCount) unread").font(.caption).foregroundStyle(.purple)}
                         }
                     } else {
-                        Text("No compatible Agent widgets are published. Select one in Settings → iPhone on your Mac.").foregroundStyle(.secondary)
+                        Text("No compatible Agent widgets are published. Select one in Settings → iPhone & iPad on your Mac.").foregroundStyle(.secondary)
                     }
                     Section {
                         Text("Add a Wokintosh widget to your Home Screen, then choose a published Agent widget. iOS controls refresh timing; it may take longer than 15 minutes.").font(.caption).foregroundStyle(.secondary)
-                        Button("Unpair this iPhone",role:.destructive) {confirmUnpair=true}
+                        Button("Unpair this device",role:.destructive) {confirmUnpair=true}
                     }
                 }
             }
@@ -79,12 +79,12 @@ struct PhoneRootView:View {
                         Text("Paste only the private pairing code from Wokintosh on your Mac.")
                         TextEditor(text:$pairingText).font(.system(.caption,design:.monospaced)).frame(minHeight:140)
                         Button("Pair") {let code=pairingText;pairingText="";pasteCode=false;store.pair(code)}.disabled(pairingText.isEmpty)
-                    }.navigationTitle("Pair iPhone").toolbar {Button("Cancel") {pairingText="";pasteCode=false}}
+                    }.navigationTitle("Pair with your Mac").toolbar {Button("Cancel") {pairingText="";pasteCode=false}}
                 }
             }
             .sheet(item:$store.selectedSession) {_ in if let row=store.selectedSession {sessionDetail(row)}}
             .alert("Wokintosh",isPresented:Binding(get:{store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
-            .confirmationDialog("Unpair this iPhone and clear its saved widget data?",isPresented:$confirmUnpair,titleVisibility:.visible) {
+            .confirmationDialog("Unpair this device and clear its saved widget data?",isPresented:$confirmUnpair,titleVisibility:.visible) {
                 Button("Unpair",role:.destructive) {store.unpair()}
             }
         }

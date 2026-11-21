@@ -19,7 +19,11 @@ struct AgentTimelineProvider:AppIntentTimelineProvider {
         if let agents=entry.widget?.agents {
             let size:PhoneWidgetSize=context.family == .systemLarge ? .large : .medium
             let transitions=[false,true].flatMap {accessibility in
-                PhoneWidgetPresentation(agents:agents,size:size,accessibility:accessibility,connection:snapshot.state,at:now).staleTransitions
+                // The smallest layouts may show only the source time and overflow.
+                let limits:[Int?]=[nil,0]
+                return limits.flatMap {limit in
+                    PhoneWidgetPresentation(agents:agents,size:size,accessibility:accessibility,connection:snapshot.state,at:now,maximumRows:limit).staleTransitions
+                }
             }
             for transition in Set(transitions).sorted() {
                 var stale=entry;stale.date=transition;entries.append(stale)

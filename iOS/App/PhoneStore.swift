@@ -80,7 +80,7 @@ import WokintoshCore
         } catch {
             // Even a failed pairing transaction may have revoked the previous one.
             selectedSession=nil;apply((try? repository.snapshot()) ?? .empty)
-            message="The pairing code could not be saved. Scan the code from Settings → iPhone on your Mac.\n\n"+error.localizedDescription
+            message="The pairing code could not be saved. Scan the code from Settings → iPhone & iPad on your Mac.\n\n"+error.localizedDescription
         }
     }
     func unpair() {
@@ -104,7 +104,7 @@ import WokintoshCore
         catch {selectedSession=nil;message=error.localizedDescription;return}
         guard snapshot.paired,let feed=snapshot.feed,let row=route.resolve(in:feed) else {
             selectedSession=nil
-            message="This session is no longer in the published widget. Refresh the list on your Mac and iPhone.";return
+            message="This session is no longer in the published widget. Refresh the list on your Mac and this device.";return
         }
         selectedWidgetID=route.widgetID;selectedRoute=route;selectedSession=row;navigationMessage=nil
         openSelectedSession()

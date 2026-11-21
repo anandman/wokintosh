@@ -11,10 +11,10 @@ struct PublisherSettingsView:View {
     @State private var showPairing=false
     var body:some View {
         Form {
-            Section("Wokintosh on your iPhone") {
+            Section("Wokintosh on your iPhone or iPad") {
                 Toggle("Publish selected widgets",isOn:Binding(get:{publisher.options.enabled},set:{value in change{$0.enabled=value}}))
                 Text(publisher.status).foregroundStyle(publisher.options.enabled ? .primary : .secondary)
-                Text("Your iPhone can read selected Agent widgets over your private Tailscale network. Keep Wokintosh and this Mac running; the dashboard window can be closed.")
+                Text("Your iPhone or iPad can read selected Agent widgets over your private Tailscale network. Keep Wokintosh and this Mac running; the dashboard window can be closed.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             if publisher.options.enabled {
@@ -24,7 +24,7 @@ struct PublisherSettingsView:View {
                             change {if enabled {$0.selectedWidgetIDs.insert(widget.id)} else {$0.selectedWidgetIDs.remove(widget.id)}}
                         }))
                     }
-                    Text("Filters and ordering follow each Mac widget. Other widget types can be added in future versions. Publishing choices and phone access keys stay on this Mac when exporting a setup.")
+                    Text("Filters and ordering follow each Mac widget. Other widget types can be added in future versions. Publishing choices and device access keys stay on this Mac when exporting a setup.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Private connection") {
@@ -40,16 +40,16 @@ struct PublisherSettingsView:View {
                     }
                     Text("The connection uses private HTTPS port 9443. It does not use Tailscale Funnel or change your other services.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Pair your iPhone") {
+                Section("Pair your iPhone or iPad") {
                     Button(showPairing ? "Hide pairing code" : "Show pairing code") {showPairing.toggle()}
                         .disabled(publisher.options.endpoint.isEmpty || store.document.previewMode)
                     if showPairing,let pairing=try? publisher.pairing(),let data=try? pairing.encoded(),let image=qr(data) {
                         Image(nsImage:image).interpolation(.none).resizable().frame(width:230,height:230)
-                            .padding(12).background(.white).accessibilityLabel("Private Wokintosh phone pairing code")
-                        Text("Scan this in Wokintosh on your iPhone. This code grants read access to your published widgets; keep it private.").font(.caption).foregroundStyle(.secondary)
+                            .padding(12).background(.white).accessibilityLabel("Private Wokintosh device pairing code")
+                        Text("Scan this in Wokintosh on your iPhone or iPad. This code grants read access to your published widgets; keep it private.").font(.caption).foregroundStyle(.secondary)
                     }
                     Button("Change access key") {perform {try publisher.rotateCredential();showPairing=false;store.publishWidgets()}}
-                    Text("Changing the key requires pairing the phone again. Stopping publishing prevents new access; the phone may retain its last snapshot until it refreshes or you unpair it.").font(.caption).foregroundStyle(.secondary)
+                    Text("Changing the key requires pairing your device again. Stopping publishing prevents new access; your device may retain its last snapshot until it refreshes or you unpair it.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let error {Text(error).foregroundStyle(.red)}

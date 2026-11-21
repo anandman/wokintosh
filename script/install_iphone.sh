@@ -3,11 +3,11 @@ set -euo pipefail
 
 usage() {
     cat <<'HELP'
-Usage: script/install_iphone.sh --device IPHONE_UDID [--team TEAM_ID] [--dry-run]
+Usage: script/install_iphone.sh --device DEVICE_UDID [--team TEAM_ID] [--dry-run]
        script/install_iphone.sh --build-only [--team TEAM_ID] [--dry-run]
 
-Requires Xcode iPhone development signing and a trusted device. Uses only the
-explicitly chosen iPhone; builds stay under /private/tmp by default.
+Requires Xcode iOS/iPadOS development signing and a trusted device. Uses only the
+explicitly chosen iPhone or iPad; builds stay under /private/tmp by default.
 HELP
 }
 wokintosh_phone_device=""
@@ -28,7 +28,7 @@ while [ "$#" -gt 0 ]; do
 done
 if ! $wokintosh_phone_build_only && [ -z "$wokintosh_phone_device" ]; then usage >&2; exit 2; fi
 if [ -n "$wokintosh_phone_device" ] && ! [[ "$wokintosh_phone_device" =~ ^[A-Fa-f0-9-]{8,64}$ ]]; then
-    printf '%s\n' 'Use the iPhone UDID from Xcode Devices and Simulators.' >&2; exit 2
+    printf '%s\n' 'Use the iPhone or iPad UDID from Xcode Devices and Simulators.' >&2; exit 2
 fi
 if [ -n "$wokintosh_phone_team" ] && ! [[ "$wokintosh_phone_team" =~ ^[A-Z0-9]{10}$ ]]; then
     printf '%s\n' 'Use the ten-character Apple developer team ID.' >&2; exit 2
@@ -68,11 +68,11 @@ for bundle,identifier in [(app,'dev.wokintosh.phone'),(app/'PlugIns/WokintoshAge
     try:
         ent=plistlib.loads(subprocess.check_output(['/usr/bin/codesign','-d','--entitlements','-',str(bundle)],stderr=subprocess.DEVNULL))
     except (subprocess.CalledProcessError,plistlib.InvalidFileException):
-        raise SystemExit('The app and widget need valid signed iPhone entitlements. Repair Signing & Capabilities in Xcode.')
+        raise SystemExit('The app and widget need valid signed iOS/iPadOS entitlements. Repair Signing & Capabilities in Xcode.')
     team=ent.get('com.apple.developer.team-identifier')
     application=ent.get('application-identifier','')
     if not team or not application.endswith('.'+identifier):
-        raise SystemExit('The signed app and widget need their explicit iPhone provisioning profiles.')
+        raise SystemExit('The signed app and widget need their explicit iOS/iPadOS provisioning profiles.')
     prefix=application[:-len(identifier)]
     shared=prefix+'dev.wokintosh.phone.shared'
     info=plistlib.loads((bundle/'Info.plist').read_bytes())
@@ -88,5 +88,5 @@ if $wokintosh_phone_build_only; then
     printf 'Prepared %s\n' "$wokintosh_phone_app"
 else
     xcrun devicectl device install app --device "$wokintosh_phone_device" "$wokintosh_phone_app"
-    printf '%s\n' 'Installed. Open Wokintosh on your iPhone to pair it with your Mac.'
+    printf '%s\n' 'Installed. Open Wokintosh on your iPhone or iPad to pair it with your Mac.'
 fi

@@ -18,6 +18,17 @@ final class PhoneWidgetPresentationTests:XCTestCase {
         XCTAssertEqual(PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:true,connection:.current,at:now).rows.count,1)
         XCTAssertEqual(PhoneWidgetPresentation(agents:payload,size:.large,accessibility:true,connection:.current,at:now).rows.count,3)
     }
+    func testSpaceLimitedWidgetsKeepOrderedRowsAndDiscloseEveryOmission() {
+        let payload=agents(8)
+        let compact=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:false,connection:.current,at:now,maximumRows:1)
+        XCTAssertEqual(compact.rows.map(\.id),Array(payload.rows.prefix(1)).map(\.id))
+        XCTAssertEqual(compact.hiddenCount,7)
+        let minimal=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:true,connection:.current,at:now,maximumRows:0)
+        XCTAssertTrue(minimal.rows.isEmpty);XCTAssertEqual(minimal.hiddenCount,8)
+        XCTAssertEqual(minimal.asOf,payload.sourceObservedAt)
+        let oversized=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:false,connection:.current,at:now,maximumRows:99)
+        XCTAssertEqual(oversized.rows.count,2)
+    }
     func testTimelineSchedulesStalenessWithoutClaimingAnotherSuccessfulFetch() {
         let payload=agents(2,observedAt:now.addingTimeInterval(-1700))
         let view=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:false,connection:.current,at:now)

@@ -91,8 +91,8 @@ enum PhoneStorageError:Error,LocalizedError {
     case notConfigured,keychain
     var errorDescription:String? {
         switch self {
-        case .notConfigured:return "Phone sharing is not available in this build. Reinstall Wokintosh with its app and widget sharing capabilities enabled."
-        case .keychain:return "Wokintosh could not access its saved phone pairing. Unlock your iPhone and try again."
+        case .notConfigured:return "Widget sharing is not available in this build. Reinstall Wokintosh with its app and widget sharing capabilities enabled."
+        case .keychain:return "Wokintosh could not access its saved pairing. Unlock your device and try again."
         }
     }
 }
