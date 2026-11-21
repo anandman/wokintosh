@@ -88,7 +88,7 @@ def session_open_urls(session):
         if identity and identity == session.get('id'):
             primary = 'codex://threads/' + identity
             return {'macOS': {'primary': primary},
-                    'iOS': {'primary': primary, 'fallback': 'https://chatgpt.com/app'}}
+                    'iOS': {'primary': primary, 'fallback': 'https://chatgpt.com/app', 'fallbackLabel': 'Open ChatGPT (new chat)'}}
     elif session.get('provider') == 'claude':
         bridge = valid_bridge_id(session.get('_bridgeSessionID'))
         if bridge:

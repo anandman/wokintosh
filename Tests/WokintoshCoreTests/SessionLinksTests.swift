@@ -11,8 +11,9 @@ final class SessionLinksTests:XCTestCase {
         XCTAssertNil(try session().openURLs)
     }
     func testPlatformTargetsRoundTripAndUnknownFieldsAreHarmless() throws {
-        let s=try session(["iOS":["primary":"codex://threads/example", "fallback":"https://chatgpt.com/app"],"futureOS":"something"])
+        let s=try session(["iOS":["primary":"codex://threads/example", "fallback":"https://chatgpt.com/app", "fallbackLabel":"Open ChatGPT (new chat)"],"futureOS":"something"])
         XCTAssertEqual(s.openURLs?.iOS?.primary,"codex://threads/example")
+        XCTAssertEqual(s.openURLs?.iOS?.fallbackLabel,"Open ChatGPT (new chat)")
         XCTAssertNil(s.openURLs?.macOS)
         XCTAssertEqual(try JSONDecoder().decode(AgentSession.self,from:JSONEncoder().encode(s)),s)
     }

@@ -16,7 +16,7 @@ Alternatively, once Xcode signing/device setup is ready:
 script/install_iphone.sh --device YOUR_IPHONE_UDID
 ```
 
-The helper builds outside Dropbox, verifies that the signed app contains its widget, and installs to the explicitly chosen device. `--build-only` prepares a signed build without installing; `--dry-run` prints the operations. Override the project team using `--team YOUR_TEAM_ID` when appropriate. It never requests a password in the terminal, revokes certificates, publishes to an app store, or changes another app.
+The helper builds outside Dropbox, verifies the signed app, embedded widget and their matching App Group/Keychain capabilities, and installs to the explicitly chosen device. `--build-only` prepares a signed build without installing; `--dry-run` prints the operations. Override the project team using `--team YOUR_TEAM_ID` when appropriate. It never requests a password in the terminal, revokes certificates, publishes to an app store, or changes another app.
 
 ## Connect the display Mac
 
@@ -39,10 +39,10 @@ The display Mac and Wokintosh must remain running. The dashboard window can be c
 
 Update the collector on each source machine to supply session links. Codex uses its normal thread UUID. Claude needs a Remote Control bridge ID from `CLAUDE_CODE_BRIDGE_SESSION_ID` in observational hook invocations (Claude Code v2.1.199+). Enable/update the observer through the existing Machines setup and review/trust it normally. Wokintosh does not enable Remote Control automatically. After connecting Remote Control, the next hook event can establish the association; a missing bridge ID stays unavailable. PID metadata is not used as a fallback.
 
-On the initial user's iPhone, both Claude forms opened an exact existing session. The preferred target is `claude://code/{bridge-id}`, with `https://claude.ai/code/{bridge-id}` as backup. `codex://threads/{thread-id}` also opened the distinct sample-project session with the unchanged UUID; this mobile route remains an undocumented compatibility contract. The general backup `https://chatgpt.com/app` opens ChatGPT but does not select a Codex view or session. Do not substitute `/c/{thread-id}`.
+On the initial user's iPhone, both Claude forms opened an exact existing session. The preferred target is `claude://code/{bridge-id}`, with `https://claude.ai/code/{bridge-id}` as backup. `codex://threads/{thread-id}` also opened the distinct sample-project session with the unchanged UUID; this mobile route remains an undocumented compatibility contract. The explicitly labeled backup **Open ChatGPT (new chat)** uses `https://chatgpt.com/app`; it opens ChatGPT but does not select a Codex view or session. A failed exact-session link never opens that backup automatically. Do not substitute `/c/{thread-id}`.
 
 Rows route through the Wokintosh app into the official app. The OS accepting a link does not prove the official app resolved the right host/chat; use the session detail's backup link when needed. A missing link still shows title, machine, project and state.
 
-Widgets request updates about every 15 minutes; iOS controls the schedule and can wait longer. **As of** is based on source observation, not a new HTTP response around old data. Snapshots become stale after 30 minutes and disconnected sources show Offline immediately, including an empty list. Larger text uses fewer rows with accurate overflow counts. Phone views never review Done, send prompts, approve actions, or control the source session.
+Widgets request updates about every 15 minutes; iOS controls the schedule and can wait longer. **As of** is based on source observation, not a new HTTP response around old data. Snapshots become stale after 30 minutes and disconnected sources show Offline immediately, including an empty list. Mixed-source widgets also mark affected rows Offline or Stale. Larger text uses fewer rows with accurate overflow counts. Phone views never review Done, send prompts, approve actions, or control the source session.
 
 Publishing consent/credentials stay out of setup exports and templates. Imported/replaced widgets require publication selection again. Stopping publishing prevents new access; a phone can retain its last snapshot until it refreshes. Change the access key to require pairing again, or **Unpair** in the phone app to clear its credential and saved data.

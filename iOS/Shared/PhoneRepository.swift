@@ -28,35 +28,61 @@ struct PhoneRepository:Sendable {
         return PhoneRepository(cache:PhoneSnapshotCache(directory:directory.appendingPathComponent("PublishedWidgets",isDirectory:true)),
                                credentials:try KeychainPhoneCredentials(),client:PhoneFeedClient())
     }
+    private var coordinator:PhoneRepositoryCoordinator {PhoneRepositoryCoordinator(directory:cache.directory)}
     func snapshot()throws->PhoneSnapshot {
+        try coordinator.withLock {try snapshotLocked()}
+    }
+    private func snapshotLocked()throws->PhoneSnapshot {
         let status=cache.status()
-        guard try credentials.load() != nil else {
-            if cache.load() != nil {try cache.clear()}
+        // Revocation stays effective even if a locked Keychain prevented deleting the credential.
+        guard status.state != .authorizationRequired,try credentials.load() != nil else {
+            if cache.load() != nil {try cache.requirePairing()}
             return PhoneSnapshot(feed:nil,state:status.state == .authorizationRequired ? .authorizationRequired : .unpaired,lastFetchedAt:nil,paired:false)
         }
         let feed=cache.load()
         return PhoneSnapshot(feed:feed,state:feed==nil ? .offline : status.state,lastFetchedAt:status.lastFetchedAt,paired:true)
     }
     func pair(_ pairing:PhonePairing)throws {
-        try cache.clear();try credentials.save(pairing)
+        try coordinator.withLock {
+            try coordinator.advanceGeneration()
+            try cache.requirePairing()
+            try credentials.save(pairing)
+            try cache.clear()
+        }
     }
     func unpair()throws {
-        try cache.requirePairing()
-        try credentials.remove()
-        try cache.clear()
+        try coordinator.withLock {
+            try coordinator.advanceGeneration()
+            try cache.requirePairing()
+            try credentials.remove()
+            try cache.clear()
+        }
     }
     func refresh()async throws->PhoneSnapshot {
-        guard let pairing=try credentials.load() else {return try snapshot()}
-        do {
-            let feed=try await client.fetch(pairing)
-            // An old in-flight response cannot replace a newly paired publisher.
-            guard try credentials.load()==pairing else {return try snapshot()}
-            try cache.store(feed,fetchedAt:Date())
-        } catch is CancellationError {return try snapshot()}
-        catch PhoneFetchError.unauthorized {
-            try cache.requirePairing();try credentials.remove()
-        } catch {try cache.markUnavailable()}
-        return try snapshot()
+        let request:(PhonePairing,UUID)?=try coordinator.withLock {
+            guard cache.status().state != .authorizationRequired,let pairing=try credentials.load() else {return nil}
+            return (pairing,try coordinator.generation())
+        }
+        guard let (pairing,generation)=request else {return try snapshot()}
+        let result:Result<PublishedWidgetFeed,Error>
+        do {result = .success(try await client.fetch(pairing))}
+        catch {result = .failure(error)}
+        return try coordinator.withLock {
+            // The app and extension share this generation and lock. Every response outcome
+            // belongs to the captured pairing, including failures and pairing with the same code.
+            guard try coordinator.generation()==generation,try credentials.load()==pairing,
+                  cache.status().state != .authorizationRequired else {return try snapshotLocked()}
+            switch result {
+            case .success(let feed):try cache.store(feed,fetchedAt:Date())
+            case .failure(is CancellationError):break
+            case .failure(PhoneFetchError.unauthorized):
+                try coordinator.advanceGeneration()
+                try cache.requirePairing()
+                try credentials.remove()
+            case .failure:try cache.markUnavailable()
+            }
+            return try snapshotLocked()
+        }
     }
 }
 

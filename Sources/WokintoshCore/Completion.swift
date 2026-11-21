@@ -7,6 +7,13 @@ public struct CompletionRecord: Codable, Equatable, Identifiable, Sendable {
     public var observedAt:Date?
     public var id: String { row.id }
     public var row: SessionRow { SessionRow(hostID:hostID,hostName:hostName,session:session,completionPending:true,completionObservedAt:observedAt) }
+    /// Retain the unread receipt while using the current source's connectivity/navigation.
+    public func overlay(on current:SessionRow?)->SessionRow {
+        var value=row
+        value.connected=current?.connected ?? false
+        if let current,current.connected {value.session.openURLs=current.session.openURLs}
+        return value
+    }
     public init(_ row: SessionRow,observedAt:Date?=nil) { hostID=row.hostID;hostName=row.hostName;session=row.session;self.observedAt=observedAt ?? row.completionObservedAt }
 }
 
@@ -44,6 +51,7 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
                 pending[index].session.parentId=row.session.parentId
                 pending[index].session.title=row.session.title
                 pending[index].session.project=row.session.project
+                pending[index].session.openURLs=row.session.openURLs
             }
             if row.session.state == .blocked || row.session.goalBlocked == true {
                 review(row.id)

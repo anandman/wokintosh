@@ -113,7 +113,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         let imported=try setup.applying(to:document,machineMapping:machineMapping)
         // A setup replaces the layout. Matching UUIDs must not grant publication
         // consent to imported content; revoke before the first persistence attempt.
-        try publisher.removeSelections(for:Set(document.widgets.map(\.id)))
+        try publisher.removeSelections(for:publisher.options.selectedWidgetIDs)
         saveTask?.cancel();saveTask=nil
         do {
             if layoutNeedsBackup {
@@ -242,7 +242,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             for row in feedRows() { raw[row.id]=row }
             for completion in document.completions.pending where !document.blockedSessions.contains(completion.id) && !document.reportedBlockedSessions.contains(completion.id) {
                 if let current=raw[completion.id],current.session.state == .blocked || current.session.goalBlocked == true { continue }
-                raw[completion.id]=completion.row
+                raw[completion.id]=completion.overlay(on:raw[completion.id])
             }
         }
         let connectedHosts=Set(feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})

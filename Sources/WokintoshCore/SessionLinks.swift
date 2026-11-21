@@ -5,7 +5,8 @@ import Foundation
 public struct SessionOpenTarget:Codable,Equatable,Sendable {
     public var primary:String
     public var fallback:String?
-    public init(primary:String,fallback:String?=nil) {self.primary=primary;self.fallback=fallback}
+    public var fallbackLabel:String?
+    public init(primary:String,fallback:String?=nil,fallbackLabel:String?=nil) {self.primary=primary;self.fallback=fallback;self.fallbackLabel=Self.validLabel(fallbackLabel)}
     public var url:URL? {Self.validURL(primary)}
     public var fallbackURL:URL? {fallback.flatMap(Self.validURL)}
     public static func validURL(_ value:String)->URL? {
@@ -15,13 +16,18 @@ public struct SessionOpenTarget:Codable,Equatable,Sendable {
               let host=parts.host,!host.isEmpty,let url=parts.url else {return nil}
         return url
     }
-    private enum CodingKeys:String,CodingKey {case primary,fallback}
+    private static func validLabel(_ value:String?)->String? {
+        guard let value,!value.isEmpty,value.count<=80,value.rangeOfCharacter(from:.controlCharacters)==nil else {return nil}
+        return value
+    }
+    private enum CodingKeys:String,CodingKey {case primary,fallback,fallbackLabel}
     public init(from decoder:Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         let value=try c.decode(String.self,forKey:.primary)
         guard Self.validURL(value) != nil else {
             throw DecodingError.dataCorruptedError(forKey:.primary,in:c,debugDescription:"Invalid session navigation target")
         }
+        fallbackLabel=Self.validLabel(try? c.decode(String.self,forKey:.fallbackLabel))
         primary=value
         fallback=(try? c.decode(String.self,forKey:.fallback)).flatMap{Self.validURL($0) == nil ? nil : $0}
     }

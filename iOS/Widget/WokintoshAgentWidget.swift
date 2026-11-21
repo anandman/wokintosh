@@ -17,9 +17,11 @@ struct AgentTimelineProvider:AppIntentTimelineProvider {
         let entry=AgentWidgetEntry.make(snapshot:snapshot,selection:configuration.widget?.id,at:now)
         var entries=[entry]
         if let agents=entry.widget?.agents {
-            let presentation=PhoneWidgetPresentation(agents:agents,size:context.family == .systemLarge ? .large : .medium,
-                                                     accessibility:false,connection:snapshot.state,at:now)
-            if let transition=presentation.staleTransition {
+            let size:PhoneWidgetSize=context.family == .systemLarge ? .large : .medium
+            let transitions=[false,true].flatMap {accessibility in
+                PhoneWidgetPresentation(agents:agents,size:size,accessibility:accessibility,connection:snapshot.state,at:now).staleTransitions
+            }
+            for transition in Set(transitions).sorted() {
                 var stale=entry;stale.date=transition;entries.append(stale)
             }
         }

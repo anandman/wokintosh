@@ -47,6 +47,20 @@ final class WidgetPublisherTests:XCTestCase {
         XCTAssertTrue(publisher.options.selectedWidgetIDs.isEmpty)
         XCTAssertNil(publisher.publishedData)
     }
+    @MainActor func testImportRevokesSelectionsMissingFromTheOutgoingLayout() throws {
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let publisher=WidgetPublisher(directory:directory,credentials:MemoryPublisherCredentials(),servesNetwork:false)
+        let store=DashboardStore(dataDirectory:directory,publisher:publisher)
+        let stale=Widget(kind:.agents,frame:WidgetFrame(x:0,y:0,width:0.5,height:0.5))
+        var options=publisher.options;options.enabled=true;options.selectedWidgetIDs=[stale.id]
+        try publisher.setOptions(options,widgets:[stale])
+        XCTAssertFalse(store.document.widgets.contains{$0.id==stale.id})
+        var incoming=store.document;incoming.widgets=[stale]
+        let setup=try DashboardSetup.export(document:incoming,kind:.setup)
+        _=try store.applySetup(setup)
+        XCTAssertTrue(publisher.options.selectedWidgetIDs.isEmpty)
+    }
     @MainActor func testDefaultOffAndSelectionReductionRevokesOldData() throws {
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer {try? FileManager.default.removeItem(at:directory)}

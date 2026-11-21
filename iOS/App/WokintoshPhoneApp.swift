@@ -16,85 +16,6 @@ import WokintoshCore
     }
 }
 
-@MainActor final class PhoneStore:ObservableObject {
-    @Published var snapshot=PhoneSnapshot.empty
-    @Published var selectedWidgetID:UUID? {
-        didSet {UserDefaults.standard.set(selectedWidgetID?.uuidString,forKey:"selectedPublishedWidget")}
-    }
-    @Published var selectedSession:PublishedAgentRow?
-    @Published var message:String?
-    @Published private(set) var refreshing=false
-    private let repository:PhoneRepository?
-    let preview:Bool
-    init() {
-        #if DEBUG
-        preview=ProcessInfo.processInfo.arguments.contains("--sample-data")
-        #else
-        preview=false
-        #endif
-        do {
-            #if DEBUG
-            let repository=try preview ? PhoneFixtures.repository() : PhoneRepository.live()
-            #else
-            let repository=try PhoneRepository.live()
-            #endif
-            let loaded=try repository.snapshot()
-            self.repository=repository;snapshot=loaded
-        } catch {repository=nil;message=error.localizedDescription}
-        selectedWidgetID=UserDefaults.standard.string(forKey:"selectedPublishedWidget").flatMap(UUID.init(uuidString:)) ?? snapshot.feed?.widgets.first?.id
-    }
-    var selectedWidget:PublishedWidget? {
-        snapshot.feed?.widgets.first(where:{$0.id==selectedWidgetID}) ?? snapshot.feed?.widgets.first
-    }
-    func refresh()async {
-        guard !refreshing,!preview,let repository else {return}
-        refreshing=true;defer {refreshing=false}
-        do {
-            snapshot=try await repository.refresh()
-            if selectedWidgetID==nil {selectedWidgetID=snapshot.feed?.widgets.first?.id}
-            WidgetCenter.shared.reloadAllTimelines()
-        } catch {message=error.localizedDescription}
-    }
-    func pair(_ text:String) {
-        guard let repository,!preview else {return}
-        do {
-            let pairing=try PhonePairing.decode(Data(text.utf8))
-            try repository.pair(pairing);snapshot=try repository.snapshot();selectedWidgetID=nil
-            Task {await refresh()}
-        } catch {message="The pairing code could not be saved. Scan the code from Settings → iPhone on your Mac.\n\n"+error.localizedDescription}
-    }
-    func unpair() {
-        guard let repository,!preview else {return}
-        do {try repository.unpair();snapshot = .empty;selectedWidgetID=nil;selectedSession=nil;WidgetCenter.shared.reloadAllTimelines()}
-        catch {snapshot = .empty;message=error.localizedDescription}
-    }
-    func handle(_ url:URL) {
-        guard url.scheme=="wokintosh",url.host != "dashboard" else {return}
-        if let repository,let fresh=try? repository.snapshot() {snapshot=fresh}
-        guard let route=PhoneRoute(url:url),let feed=snapshot.feed,let row=route.resolve(in:feed) else {
-            message="This session is no longer in the published widget. Refresh the list on your Mac and iPhone.";return
-        }
-        selectedWidgetID=route.widgetID;open(row)
-    }
-    func open(_ row:PublishedAgentRow) {
-        selectedSession=row
-        guard !preview,let target=row.session.openURLs?.iOS,let primary=target.url else {return}
-        UIApplication.shared.open(primary,options:[:]) { [weak self] opened in
-            guard !opened else {return}
-            Task { @MainActor in
-                if let fallback=target.fallbackURL {self?.openBackup(fallback)}
-                else {self?.message="The session’s app could not be opened on this iPhone."}
-            }
-        }
-    }
-    func openBackup(_ url:URL) {
-        guard !preview else {return}
-        UIApplication.shared.open(url,options:[:]) { [weak self] opened in
-            if !opened {Task { @MainActor in self?.message="The backup link could not be opened."}}
-        }
-    }
-}
-
 struct PhoneRootView:View {
     @ObservedObject var store:PhoneStore
     @State private var scanner=false
@@ -128,14 +49,15 @@ struct PhoneRootView:View {
                             }
                         }
                     }
-                    if let agents=store.selectedWidget?.agents {
-                        Section(store.selectedWidget?.name ?? "Agents") {
+                    if let widget=store.selectedWidget,let agents=widget.agents,let publisherID=store.snapshot.feed?.publisherID {
+                        Section(widget.name) {
                             ForEach(agents.rows) {row in
-                                Button {store.open(row)} label: {
+                                let route=PhoneRoute(publisherID:publisherID,widgetID:widget.id,rowID:row.id)
+                                Button {store.open(route)} label: {
                                     PhoneAgentRowView(row:row,offline:store.snapshot.state == .offline,at:Date())
                                 }.buttonStyle(.plain)
                             }
-                            if agents.rows.isEmpty {Text("No active sessions").foregroundStyle(.secondary)}
+                            if agents.rows.isEmpty && agents.totalCount==0 {Text("No active sessions").foregroundStyle(.secondary)}
                             if agents.hiddenCount>0 {Text("\(agents.hiddenCount) more sessions on your Mac").font(.caption).foregroundStyle(.secondary)}
                             if agents.earlierDoneCount>0 {Text("Earlier Done · \(agents.earlierDoneCount) unread").font(.caption).foregroundStyle(.purple)}
                         }
@@ -160,7 +82,7 @@ struct PhoneRootView:View {
                     }.navigationTitle("Pair iPhone").toolbar {Button("Cancel") {pairingText="";pasteCode=false}}
                 }
             }
-            .sheet(item:$store.selectedSession) {row in sessionDetail(row)}
+            .sheet(item:$store.selectedSession) {_ in if let row=store.selectedSession {sessionDetail(row)}}
             .alert("Wokintosh",isPresented:Binding(get:{store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
             .confirmationDialog("Unpair this iPhone and clear its saved widget data?",isPresented:$confirmUnpair,titleVisibility:.visible) {
                 Button("Unpair",role:.destructive) {store.unpair()}
@@ -178,8 +100,11 @@ struct PhoneRootView:View {
                 PhoneAgentRowView(row:row,offline:store.snapshot.state == .offline,at:Date())
                 if let date=row.sourceObservedAt {LabeledContent("As of",value:date.formatted(date:.abbreviated,time:.shortened))}
                 if let url=row.session.openURLs?.iOS?.url {
-                    Button("Open session") {store.open(row)}
-                    if let backup=row.session.openURLs?.iOS?.fallbackURL {Button("Open backup link") {store.openBackup(backup)}}
+                    Button("Open session") {store.openSelectedSession()}
+                    if row.session.openURLs?.iOS?.fallbackURL != nil {
+                        Button(row.session.openURLs?.iOS?.fallbackLabel ?? "Open backup link") {store.openSelectedSession(backup:true)}
+                    }
+                    if let note=store.navigationMessage {Text(note).foregroundStyle(.orange)}
                     Text("Session actions happen in the official app. Opening a session does not review its Done notice.").font(.caption).foregroundStyle(.secondary)
                     Text(url.scheme=="claude" ? "Opens Claude." : "Opens the session’s app.").font(.caption).foregroundStyle(.secondary)
                 } else {

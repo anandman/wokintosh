@@ -83,6 +83,7 @@ targets:
     sources:
       - Tests
       - Shared
+      - App/PhoneStore.swift
       - Widget/WidgetModels.swift
       - Widget/AgentWidgetView.swift
     dependencies:

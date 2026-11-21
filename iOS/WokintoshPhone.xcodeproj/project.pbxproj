@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		14BA76B437420CE7AAF32E05 /* PhoneStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3DFA1C572340C00031FC48 /* PhoneStoreTests.swift */; };
+		169DCCA127BBE878B86DFF6C /* PhoneRepositoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */; };
 		17664A1C74B1C1ADBC531F2D /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7124D10F766FC4AA80DFAC42 /* WokintoshCore */; };
 		2D760AFB02D7BB7A08DC2063 /* PhoneWidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */; };
 		342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
@@ -14,8 +16,10 @@
 		3F4CE88C15B6693AE611AC52 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
 		47CEBEF62BF45D63D3EED71A /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
 		491705590F5D1DF9DF632DCF /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		579E949035E48DB79EDCB1E3 /* PhoneRepositoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */; };
 		5C43FECB2FB516AF5299041F /* AgentWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */; };
 		5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
+		698FBE0B7A3577CBC1375C49 /* PhoneRepositoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */; };
 		7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
 		9D5D2A53C058B972CB94805F /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4484A4DC95DB20A9DE7FE1B8 /* WokintoshCore */; };
 		A03100546B54559744776EC7 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
@@ -27,6 +31,8 @@
 		C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */; };
 		CF6C2D01440E06FCFCE8EFA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */; };
 		D3473AB05F5FED8C660FE077 /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		D5D237C103C6415C9AAC2F82 /* PhoneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3971972C4104F14AF641436C /* PhoneStore.swift */; };
+		D644FFC28E15367EF858B8B9 /* PhoneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3971972C4104F14AF641436C /* PhoneStore.swift */; };
 		DF7635198FB4C464ECA69276 /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
 		EA54FB23392F3388B4B1C38F /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
 		EBCCE16C36405DCECD46DAF7 /* WidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */; };
@@ -66,7 +72,9 @@
 		20569A97ABBE984F84668D90 /* WokintoshAgentWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WokintoshAgentWidget.entitlements; sourceTree = "<group>"; };
 		306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepositoryTests.swift; sourceTree = "<group>"; };
 		35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWidgetTests.swift; sourceTree = "<group>"; };
+		3971972C4104F14AF641436C /* PhoneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneStore.swift; sourceTree = "<group>"; };
 		4193D399610A9078D47B9EDC /* PhoneCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneCredentials.swift; sourceTree = "<group>"; };
+		4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepositoryCoordinator.swift; sourceTree = "<group>"; };
 		4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WokintoshPhoneApp.swift; sourceTree = "<group>"; };
 		4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneScannerView.swift; sourceTree = "<group>"; };
 		5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WokintoshPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -80,6 +88,7 @@
 		C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWidgetView.swift; sourceTree = "<group>"; };
 		C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WokintoshPhoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C93AA0D4A44449D0F78792F8 /* WokintoshAgentWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WokintoshAgentWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA3DFA1C572340C00031FC48 /* PhoneStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneStoreTests.swift; sourceTree = "<group>"; };
 		CE73DA4ABA3062F446828C56 /* PublishedWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishedWidgetIntent.swift; sourceTree = "<group>"; };
 		F31018E93358078734C1300A /* PhoneFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFixtures.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -116,6 +125,7 @@
 			isa = PBXGroup;
 			children = (
 				306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */,
+				CA3DFA1C572340C00031FC48 /* PhoneStoreTests.swift */,
 				35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */,
 			);
 			path = Tests;
@@ -147,6 +157,7 @@
 			children = (
 				AA6DB780B0DE146F62B7502F /* Info.plist */,
 				4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */,
+				3971972C4104F14AF641436C /* PhoneStore.swift */,
 				0A9B40BA8ACC611149D09B65 /* WokintoshPhone.entitlements */,
 				4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */,
 			);
@@ -160,6 +171,7 @@
 				4193D399610A9078D47B9EDC /* PhoneCredentials.swift */,
 				F31018E93358078734C1300A /* PhoneFixtures.swift */,
 				0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */,
+				4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -317,7 +329,9 @@
 				342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */,
 				7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */,
 				D3473AB05F5FED8C660FE077 /* PhoneRepository.swift in Sources */,
+				169DCCA127BBE878B86DFF6C /* PhoneRepositoryCoordinator.swift in Sources */,
 				A168D47E8802623234CC63BF /* PhoneScannerView.swift in Sources */,
+				D5D237C103C6415C9AAC2F82 /* PhoneStore.swift in Sources */,
 				B5D4ED70BB6E3FD230C13A76 /* WokintoshPhoneApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -331,6 +345,7 @@
 				47CEBEF62BF45D63D3EED71A /* PhoneCredentials.swift in Sources */,
 				3F4CE88C15B6693AE611AC52 /* PhoneFixtures.swift in Sources */,
 				491705590F5D1DF9DF632DCF /* PhoneRepository.swift in Sources */,
+				698FBE0B7A3577CBC1375C49 /* PhoneRepositoryCoordinator.swift in Sources */,
 				FFAA5D8583D2E79743A7A43E /* PublishedWidgetIntent.swift in Sources */,
 				BDF69639EFD7AD5E81CED348 /* WidgetModels.swift in Sources */,
 				EBDE51E4411377BD98E1A352 /* WokintoshAgentWidget.swift in Sources */,
@@ -346,7 +361,10 @@
 				5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */,
 				A03100546B54559744776EC7 /* PhoneFixtures.swift in Sources */,
 				BAE83C00CF25615DFCD76CAF /* PhoneRepository.swift in Sources */,
+				579E949035E48DB79EDCB1E3 /* PhoneRepositoryCoordinator.swift in Sources */,
 				C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */,
+				D644FFC28E15367EF858B8B9 /* PhoneStore.swift in Sources */,
+				14BA76B437420CE7AAF32E05 /* PhoneStoreTests.swift in Sources */,
 				2D760AFB02D7BB7A08DC2063 /* PhoneWidgetTests.swift in Sources */,
 				EBCCE16C36405DCECD46DAF7 /* WidgetModels.swift in Sources */,
 			);

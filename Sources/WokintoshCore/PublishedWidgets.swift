@@ -142,18 +142,26 @@ public struct PublishedWidgetFeed:Codable,Equatable,Sendable {
         guard widgets.count<=128,Set(widgets.map(\.id)).count==widgets.count,
               widgets.allSatisfy({$0.agents?.isValid == true}) else {throw WidgetFeedError.invalid}
         let encoder=JSONEncoder();encoder.dateEncodingStrategy = .iso8601;encoder.outputFormatting=[.sortedKeys]
+        // Reserve envelope/payload metadata once, then spend the remaining bytes on
+        // ordered row prefixes, one row per widget per round. Each candidate row is
+        // measured once; the full feed is encoded only after the budget is assigned.
         var bounded=self
-        var data=try encoder.encode(bounded)
-        while data.count>Self.maximumBytes {
-            // Removing the final ordered row preserves each widget's attention-first
-            // priority. Original totals remain intact, exposing every omitted row.
-            guard let index=bounded.widgets.indices.filter({!(bounded.widgets[$0].agents?.rows.isEmpty ?? true)}).max(by:{
-                (bounded.widgets[$0].agents?.rows.count ?? 0)<(bounded.widgets[$1].agents?.rows.count ?? 0)
-            }) else {throw WidgetFeedError.oversized}
-            let count=bounded.widgets[index].agents!.rows.count
-            bounded.widgets[index].agents!.rows.removeLast(max(1,count/8))
-            data=try encoder.encode(bounded)
+        for index in widgets.indices {bounded.widgets[index].agents!.rows=[]}
+        let metadata=try encoder.encode(bounded)
+        guard metadata.count<=Self.maximumBytes else {throw WidgetFeedError.oversized}
+        var remaining=Self.maximumBytes-metadata.count
+        var closed=Set<Int>()
+        for offset in 0..<128 {
+            for index in widgets.indices where !closed.contains(index) {
+                guard let rows=widgets[index].agents?.rows,offset<rows.count else {closed.insert(index);continue}
+                let cost=try encoder.encode(rows[offset]).count+(offset==0 ? 0 : 1)
+                guard cost<=remaining else {closed.insert(index);continue}
+                bounded.widgets[index].agents!.rows.append(rows[offset]);remaining-=cost
+            }
+            if closed.count==widgets.count {break}
         }
+        let data=try encoder.encode(bounded)
+        guard data.count<=Self.maximumBytes else {throw WidgetFeedError.oversized}
         return data
     }
 }

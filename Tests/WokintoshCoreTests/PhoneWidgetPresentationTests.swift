@@ -26,6 +26,25 @@ final class PhoneWidgetPresentationTests:XCTestCase {
         XCTAssertTrue(old.stale);XCTAssertEqual(old.asOf,view.asOf)
         XCTAssertNil(old.staleTransition)
     }
+    func testTimelineStillExpiresVisibleRowsWhenAnotherSourceIsOffline() {
+        let payload=agents(2,observedAt:now.addingTimeInterval(-1700),offlineSources:1)
+        let view=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:false,connection:.current,at:now)
+        XCTAssertTrue(view.offline)
+        XCTAssertEqual(view.staleTransition,now.addingTimeInterval(101))
+    }
+    func testEveryVisibleRowHasAStaleEntryEvenIfAnotherRowIsAlreadyStale() {
+        var payload=agents(3)
+        let source=payload.rows
+        payload.rows=source.enumerated().map {index,row in
+            let sessionRow=SessionRow(hostID:row.hostID,hostName:row.hostName,session:row.session)
+            return PublishedAgentRow(row:sessionRow,observedAt:now.addingTimeInterval([-1900,-1700,-1600][index]))
+        }
+        let normal=PhoneWidgetPresentation(agents:payload,size:.large,accessibility:false,connection:.current,at:now)
+        XCTAssertTrue(normal.stale)
+        XCTAssertEqual(normal.staleTransitions,[now.addingTimeInterval(101),now.addingTimeInterval(201)])
+        let accessible=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:true,connection:.current,at:now)
+        XCTAssertTrue(accessible.stale);XCTAssertTrue(accessible.staleTransitions.isEmpty)
+    }
     func testAnEmptyWidgetStillReportsItsOfflineSourceImmediately() {
         let view=PhoneWidgetPresentation(agents:agents(0,offlineSources:1),size:.medium,accessibility:false,connection:.current,at:now)
         XCTAssertTrue(view.offline)

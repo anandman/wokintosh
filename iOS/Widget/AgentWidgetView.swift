@@ -19,12 +19,12 @@ struct AgentWidgetContentView:View {
                 }
                 Divider()
                 if presentation.rows.isEmpty {
-                    Text(presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions"))
+                    Text(agents.totalCount>0 ? "More sessions on your Mac" : (presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions")))
                         .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
                 } else {
                     ForEach(presentation.rows) {row in
                         Link(destination:PhoneRoute(publisherID:publisherID,widgetID:widget.id,rowID:row.id).url) {
-                            PhoneAgentRowView(row:row,offline:presentation.offline,showFreshness:false,at:entry.date)
+                            PhoneAgentRowView(row:row,offline:entry.connection == .offline,showFreshness:false,at:entry.date)
                                 .contentShape(Rectangle())
                         }.buttonStyle(.plain)
                         if row.id != presentation.rows.last?.id {Divider()}

@@ -41,6 +41,7 @@ class SessionLinkTests(unittest.TestCase):
             self.assertEqual(s['openURLs']['iOS']['primary'], 'codex://threads/'+THREAD)
             self.assertEqual(s['openURLs']['macOS']['primary'], 'codex://threads/'+THREAD)
             self.assertEqual(s['openURLs']['iOS']['fallback'], 'https://chatgpt.com/app')
+            self.assertEqual(s['openURLs']['iOS']['fallbackLabel'], 'Open ChatGPT (new chat)')
             self.assertNotIn('_codexThreadID', s)
 
     def test_legacy_session_id_and_non_uuid_do_not_become_guessed_thread_links(self):

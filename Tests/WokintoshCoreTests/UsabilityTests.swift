@@ -42,6 +42,38 @@ final class UsabilityTests: XCTestCase {
         tracker.ingest([row(.finished,at:now.addingTimeInterval(200))],at:now.addingTimeInterval(200))
         XCTAssertEqual(tracker.pending.count,1)
     }
+    func testPendingCompletionRefreshesAndClearsNavigationWithoutChangingItsReceipt() throws {
+        let now=Date(timeIntervalSince1970:1000000)
+        var tracker=baselined(at:now)
+        var done=row(.finished,at:now)
+        tracker.ingest([done],at:now)
+        let receipt=tracker.pending.first?.observedAt
+        done.session.openURLs=SessionOpenURLs(iOS:SessionOpenTarget(primary:"claude://code/new-bridge"))
+        tracker.ingest([done],at:now.addingTimeInterval(30))
+        XCTAssertEqual(tracker.pending.first?.session.openURLs,done.session.openURLs)
+        tracker=try JSONDecoder().decode(CompletionTracker.self,from:JSONEncoder().encode(tracker))
+        XCTAssertEqual(tracker.pending.first?.observedAt,receipt)
+        done.session.openURLs=nil
+        tracker.ingest([done],at:now.addingTimeInterval(60))
+        XCTAssertNil(tracker.pending.first?.session.openURLs)
+        XCTAssertEqual(tracker.pending.first?.observedAt,receipt)
+        XCTAssertEqual(tracker.pending.first?.session.updatedAt,now)
+    }
+    func testRetainedDoneOverlayKeepsCurrentLinksAndConnectivity() {
+        let now=Date(timeIntervalSince1970:1000000)
+        var done=row(.finished,at:now)
+        done.session.openURLs=SessionOpenURLs(iOS:SessionOpenTarget(primary:"claude://code/old"))
+        let notice=CompletionRecord(done,observedAt:now)
+        var current=done
+        current.session.openURLs=SessionOpenURLs(iOS:SessionOpenTarget(primary:"claude://code/new"))
+        XCTAssertEqual(notice.overlay(on:current).session.openURLs,current.session.openURLs)
+        current.session.openURLs=nil
+        XCTAssertNil(notice.overlay(on:current).session.openURLs)
+        current.connected=false
+        XCTAssertFalse(notice.overlay(on:current).connected)
+        XCTAssertFalse(notice.overlay(on:nil).connected)
+        XCTAssertEqual(notice.overlay(on:current).completionObservedAt,now)
+    }
     func testOldHistoryDoesNotFloodDoneAndDisconnectedStateCannotInventCompletion() {
         let now=Date(timeIntervalSince1970:1000000)
         var tracker=baselined(at:now)

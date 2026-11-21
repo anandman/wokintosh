@@ -16,14 +16,24 @@ struct PhoneAgentRowView:View {
                     Text(row.session.title).font(.headline).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
                     Text(row.completionPending ? "Done" : row.session.state.label).font(.caption.weight(.semibold)).foregroundStyle(stateColor).lineLimit(1)
                 }
-                Text(row.hostName+" · "+(row.session.project.isEmpty ? "No project" : row.session.project))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing:4) {
+                    Text(row.hostName+" · "+(row.session.project.isEmpty ? "No project" : row.session.project))
+                        .foregroundStyle(.secondary).lineLimit(1)
+                    if !showFreshness,let freshnessLabel {
+                        Text(freshnessLabel).foregroundStyle(.orange).fixedSize(horizontal:true,vertical:false)
+                    }
+                }.font(.caption)
+
                 if showFreshness && (offline || row.freshness(at:at) != .current) {
                     Text(row.freshness(at:at) == .offline ? "Source offline · last known state" : "Saved snapshot · last known state")
                         .font(.caption2).foregroundStyle(.orange).lineLimit(1)
                 }
             }
         }.accessibilityElement(children:.combine).privacySensitive()
+    }
+    private var freshnessLabel:String? {
+        if !row.connected || offline {return "Offline"}
+        return row.freshness(at:at) == .stale ? "Stale" : nil
     }
     private var stateColor:Color {
         if row.completionPending {return .purple}

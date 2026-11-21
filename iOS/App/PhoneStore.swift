@@ -1,0 +1,126 @@
+import SwiftUI
+import UIKit
+import WidgetKit
+import WokintoshCore
+
+@MainActor final class PhoneStore:ObservableObject {
+    @Published private(set) var snapshot=PhoneSnapshot.empty
+    @Published var selectedWidgetID:UUID? {
+        didSet {UserDefaults.standard.set(selectedWidgetID?.uuidString,forKey:"selectedPublishedWidget")}
+    }
+    @Published var selectedSession:PublishedAgentRow? {
+        didSet {if selectedSession==nil {selectedRoute=nil;navigationMessage=nil}}
+    }
+    @Published private(set) var navigationMessage:String?
+    private var selectedRoute:PhoneRoute?
+    private var refreshAgain=false
+    @Published var message:String?
+    @Published private(set) var refreshing=false
+    private let repository:PhoneRepository?
+    private let launch:(URL,@escaping(Bool)->Void)->Void
+    let preview:Bool
+    convenience init() {
+        #if DEBUG
+        let preview=ProcessInfo.processInfo.arguments.contains("--sample-data")
+        #else
+        let preview=false
+        #endif
+        do {
+            #if DEBUG
+            let repository=try preview ? PhoneFixtures.repository() : PhoneRepository.live()
+            #else
+            let repository=try PhoneRepository.live()
+            #endif
+            self.init(repository:repository,preview:preview)
+        } catch {self.init(repository:nil,preview:preview);message=error.localizedDescription}
+    }
+    init(repository:PhoneRepository?,preview:Bool=false,launch:@escaping(URL,@escaping(Bool)->Void)->Void={url,completion in UIApplication.shared.open(url,options:[:],completionHandler:completion)}) {
+        self.preview=preview;self.launch=launch;self.repository=repository
+        do {
+            let loaded=try repository?.snapshot() ?? .empty
+            snapshot=loaded
+        } catch {message=error.localizedDescription}
+        selectedWidgetID=UserDefaults.standard.string(forKey:"selectedPublishedWidget").flatMap(UUID.init(uuidString:)) ?? snapshot.feed?.widgets.first?.id
+    }
+    var selectedWidget:PublishedWidget? {
+        snapshot.feed?.widgets.first(where:{$0.id==selectedWidgetID}) ?? snapshot.feed?.widgets.first
+    }
+    private func apply(_ value:PhoneSnapshot) {
+        if snapshot.feed?.publisherID != value.feed?.publisherID {selectedWidgetID=nil}
+        snapshot=value
+        if let route=selectedRoute,value.paired,let feed=value.feed,let row=route.resolve(in:feed) {selectedSession=row}
+        else {selectedSession=nil}
+        if selectedWidgetID==nil {selectedWidgetID=value.feed?.widgets.first?.id}
+    }
+    private func readLatest()throws {
+        if let repository {apply(try repository.snapshot())}
+    }
+    func refresh()async {
+        guard !preview,let repository else {return}
+        if refreshing {refreshAgain=true;return}
+        refreshing=true
+        repeat {
+            refreshAgain=false
+            do {
+                _=try await repository.refresh()
+                // Another operation may have paired/unpaired while the fetch was suspended.
+                try readLatest();message=nil
+                WidgetCenter.shared.reloadAllTimelines()
+            } catch {apply((try? repository.snapshot()) ?? .empty);message=error.localizedDescription}
+        } while refreshAgain
+        refreshing=false
+    }
+    func pair(_ text:String) {
+        guard let repository,!preview else {return}
+        do {
+            let pairing=try PhonePairing.decode(Data(text.utf8))
+            try repository.pair(pairing);selectedSession=nil;selectedWidgetID=nil
+            try readLatest();WidgetCenter.shared.reloadAllTimelines()
+            Task {await refresh()}
+        } catch {
+            // Even a failed pairing transaction may have revoked the previous one.
+            selectedSession=nil;apply((try? repository.snapshot()) ?? .empty)
+            message="The pairing code could not be saved. Scan the code from Settings → iPhone on your Mac.\n\n"+error.localizedDescription
+        }
+    }
+    func unpair() {
+        guard let repository,!preview else {return}
+        selectedSession=nil;apply(.empty);selectedWidgetID=nil
+        do {try repository.unpair();WidgetCenter.shared.reloadAllTimelines()}
+        catch {message=error.localizedDescription}
+    }
+    func handle(_ url:URL) {
+        guard url.scheme=="wokintosh" else {return}
+        if url.host=="dashboard" {do {try readLatest()} catch {message=error.localizedDescription};return}
+        guard let route=PhoneRoute(url:url) else {return}
+        open(route)
+    }
+    func open(_ row:PublishedAgentRow) {
+        guard let publisher=snapshot.feed?.publisherID,let widget=selectedWidget else {return}
+        open(PhoneRoute(publisherID:publisher,widgetID:widget.id,rowID:row.id))
+    }
+    func open(_ route:PhoneRoute) {
+        do {try readLatest()}
+        catch {selectedSession=nil;message=error.localizedDescription;return}
+        guard snapshot.paired,let feed=snapshot.feed,let row=route.resolve(in:feed) else {
+            selectedSession=nil
+            message="This session is no longer in the published widget. Refresh the list on your Mac and iPhone.";return
+        }
+        selectedWidgetID=route.widgetID;selectedRoute=route;selectedSession=row;navigationMessage=nil
+        openSelectedSession()
+    }
+    func openSelectedSession(backup:Bool=false) {
+        guard let route=selectedRoute else {return}
+        do {try readLatest()}
+        catch {selectedSession=nil;message=error.localizedDescription;return}
+        guard !preview,selectedRoute==route,let row=selectedSession,let target=row.session.openURLs?.iOS,
+              let url=backup ? target.fallbackURL : target.url else {return}
+        launch(url) { [weak self] opened in
+            guard !opened else {return}
+            Task { @MainActor in
+                guard let self,self.selectedRoute==route else {return}
+                self.navigationMessage=backup ? "The backup link could not be opened." : "The session’s app could not be opened. You can try the backup below."
+            }
+        }
+    }
+}

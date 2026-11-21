@@ -54,6 +54,22 @@ final class PublishedWidgetsTests:XCTestCase {
         json["version"]=999
         XCTAssertThrowsError(try PublishedWidgetFeed.decode(JSONSerialization.data(withJSONObject:json)))
     }
+    func testLargeFeedSharesItsByteBudgetAcrossOrderedPrefixes() throws {
+        let rows=(0..<128).map{index -> SessionRow in
+            var r=row("id-\(index)");r.session.title=String(repeating:"界",count:180);return r
+        }
+        let source=payload(rows)
+        let widgets=(0..<64).map{_ in PublishedWidget(id:UUID(),name:"Agents",agents:source)}
+        let feed=PublishedWidgetFeed(publisherID:UUID(),publisherName:"Display",publishedAt:now,widgets:widgets)
+        let recovered=try PublishedWidgetFeed.decode(feed.encoded())
+        let counts=recovered.widgets.map{$0.agents!.rows.count}
+        XCTAssertLessThanOrEqual(counts.max()!-counts.min()!,1)
+        for widget in recovered.widgets {
+            let agents=try XCTUnwrap(widget.agents)
+            XCTAssertEqual(agents.rows,Array(source.rows.prefix(agents.rows.count)))
+            XCTAssertEqual(agents.totalCount,128)
+        }
+    }
     func testEncodingBoundsBytesWithoutFalsifyingCounts() throws {
         let rows=(0..<128).map{index -> SessionRow in
             var r=row("id-\(index)");r.session.title=String(repeating:"界",count:180);return r
