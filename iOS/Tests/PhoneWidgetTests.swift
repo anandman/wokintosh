@@ -1,7 +1,16 @@
 import XCTest
+import WidgetKit
 import WokintoshCore
 
 final class PhoneWidgetTests:XCTestCase {
+    func testWideAndTallFamiliesUseTheMatchingPresentation() {
+        XCTAssertEqual(AgentWidgetLayout.size(for:.systemExtraLarge),.extraLarge)
+        XCTAssertTrue(AgentWidgetLayout.supportedFamilies.contains(.systemExtraLarge))
+        if #available(iOS 27.0,*) {
+            XCTAssertEqual(AgentWidgetLayout.size(for:.systemExtraLargePortrait),.extraLargePortrait)
+            XCTAssertTrue(AgentWidgetLayout.supportedFamilies.contains(.systemExtraLargePortrait))
+        }
+    }
     func testSelectionIncludesPublisherAndDoesNotFallBackToAnotherWidget() {
         let feed=PhoneFixtures.feed(),snapshot=PhoneSnapshot(feed:feed,state:.current,lastFetchedAt:Date(),paired:true)
         let selected=AgentWidgetEntry.scopedID(publisher:feed.publisherID,widget:feed.widgets[0].id)

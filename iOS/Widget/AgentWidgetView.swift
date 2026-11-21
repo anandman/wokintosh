@@ -9,7 +9,7 @@ struct AgentWidgetContentView:View {
     let family:WidgetFamily
     @Environment(\.dynamicTypeSize) private var typeSize
     var body:some View {
-        let limit=family == .systemLarge ? (typeSize.isAccessibilitySize ? 3 : 5) : (typeSize.isAccessibilitySize ? 1 : 2)
+        let limit=AgentWidgetLayout.size(for:family).capacity(accessibility:typeSize.isAccessibilitySize)
         ViewThatFits(in:.vertical) {
             ForEach(Array((1...limit).reversed()),id:\.self) {count in
                 AgentWidgetCandidateView(entry:entry,family:family,maximumRows:count)
@@ -28,7 +28,8 @@ private struct AgentWidgetCandidateView:View {
     @Environment(\.dynamicTypeSize) private var typeSize
     var body:some View {
         if let agents=entry.widget?.agents,let publisherID=entry.publisherID,let widget=entry.widget {
-            let presentation=PhoneWidgetPresentation(agents:agents,size:family == .systemLarge ? .large : .medium,
+            let size=AgentWidgetLayout.size(for:family)
+            let presentation=PhoneWidgetPresentation(agents:agents,size:size,
                                                      accessibility:typeSize.isAccessibilitySize,connection:entry.connection,at:entry.date,maximumRows:maximumRows)
             VStack(alignment:.leading,spacing:4) {
                 if showHeader {
@@ -44,12 +45,23 @@ private struct AgentWidgetCandidateView:View {
                     Text(agents.totalCount>0 ? "Open session list" : (presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions")))
                         .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
                 } else {
-                    ForEach(presentation.rows) {row in
-                        Link(destination:PhoneRoute(publisherID:publisherID,widgetID:widget.id,rowID:row.id).url) {
-                            PhoneAgentRowView(row:row,offline:entry.connection == .offline,showFreshness:false,at:entry.date)
-                                .contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                        if row.id != presentation.rows.last?.id {Divider()}
+                    if size.columns==2 {
+                        Grid(horizontalSpacing:20,verticalSpacing:4) {
+                            ForEach(Array(stride(from:0,to:presentation.rows.count,by:2)),id:\.self) {index in
+                                GridRow(alignment:.top) {
+                                    sessionLink(presentation.rows[index],publisherID:publisherID,widgetID:widget.id)
+                                    if index+1<presentation.rows.count {
+                                        sessionLink(presentation.rows[index+1],publisherID:publisherID,widgetID:widget.id)
+                                    } else {Color.clear.gridCellUnsizedAxes([.horizontal,.vertical]).accessibilityHidden(true)}
+                                }
+                                if index+2<presentation.rows.count {Divider().gridCellColumns(2)}
+                            }
+                        }
+                    } else {
+                        ForEach(presentation.rows) {row in
+                            sessionLink(row,publisherID:publisherID,widgetID:widget.id)
+                            if row.id != presentation.rows.last?.id {Divider()}
+                        }
                     }
                     Spacer(minLength:0)
                 }
@@ -68,6 +80,12 @@ private struct AgentWidgetCandidateView:View {
                 Link("Open Wokintosh",destination:URL(string:"wokintosh://dashboard")!).font(.subheadline.weight(.semibold))
             }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.leading)
         }
+    }
+    private func sessionLink(_ row:PublishedAgentRow,publisherID:UUID,widgetID:UUID)->some View {
+        Link(destination:PhoneRoute(publisherID:publisherID,widgetID:widgetID,rowID:row.id).url) {
+            PhoneAgentRowView(row:row,offline:entry.connection == .offline,showFreshness:false,at:entry.date)
+                .frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
     private func asOf(_ p:PhoneWidgetPresentation)->String {
         let prefix=p.offline ? "Offline · " : (p.stale ? "Stale · " : "")

@@ -1,6 +1,16 @@
 import Foundation
 
-public enum PhoneWidgetSize:Sendable {case medium,large}
+public enum PhoneWidgetSize:Sendable {
+    case medium,large,extraLarge,extraLargePortrait
+    public var columns:Int {self == .extraLarge ? 2 : 1}
+    public func capacity(accessibility:Bool)->Int {
+        switch self {
+        case .medium:return accessibility ? 1 : 2
+        case .large:return accessibility ? 3 : 5
+        case .extraLarge,.extraLargePortrait:return accessibility ? 6 : 10
+        }
+    }
+}
 
 public struct PhoneWidgetPresentation:Sendable {
     public let rows:[PublishedAgentRow]
@@ -13,7 +23,7 @@ public struct PhoneWidgetPresentation:Sendable {
     public let staleTransitions:[Date]
     public var staleTransition:Date? {staleTransitions.first}
     public init(agents:PublishedAgents,size:PhoneWidgetSize,accessibility:Bool,connection:PhoneConnectionState,at now:Date,maximumRows:Int?=nil) {
-        let capacity=size == .large ? (accessibility ? 3 : 5) : (accessibility ? 1 : 2)
+        let capacity=size.capacity(accessibility:accessibility)
         rows=Array(agents.rows.prefix(min(capacity,max(0,maximumRows ?? capacity))));hiddenCount=max(0,agents.totalCount-rows.count)
         earlierDoneCount=agents.earlierDoneCount;attentionCount=agents.attentionCount
         asOf=rows.isEmpty ? agents.sourceObservedAt : (rows.allSatisfy{$0.sourceObservedAt != nil} ? rows.compactMap(\.sourceObservedAt).min() : nil)

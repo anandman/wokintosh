@@ -1,8 +1,8 @@
 # Wokintosh on your iPhone or iPad
 
-This is initially a personal development build installed directly on iPhone or iPad (iOS/iPadOS 17+), with medium and large home-screen Agent widgets. The app and extension share the portable WokintoshCore models; remote collectors keep using SSH.
+This is initially a personal development build installed directly on iPhone or iPad (iOS/iPadOS 17+), with medium and large Home Screen Agent widgets and a full-width extra-large option on iPad. The app and extension share the portable WokintoshCore models; remote collectors keep using SSH.
 
-The iPad app supports portrait and landscape. Medium and large Agent widgets are available on iPad mini as well as iPhone; both use the same pairing and session links.
+The iPad app supports portrait and landscape. All widget sizes use the same pairing and session links. Extra-large uses two columns and shows up to ten sessions. On iOS/iPadOS 27+, the app also supports Apple's tall extra-large portrait family where the system offers it; Apple documents that family for Today View on iPad. WidgetKit does not offer an arbitrary full-width, double-height Home Screen size.
 
 ## Build and install
 
@@ -41,11 +41,11 @@ The display Mac and Wokintosh must remain running. The dashboard window can be c
 
 1. Open Wokintosh on your paired iPad and tap **Refresh** so its saved list includes the latest collector links.
 2. Long-press an empty part of the Home Screen, then choose **Edit → Add Widget**.
-3. Search for **Wokintosh**, choose **Agents**, and swipe to the **large** size for more visible sessions. Tap **Add Widget**, then **Done**.
+3. Search for **Wokintosh**, choose **Agents**, and swipe to the **extra-large** size for a full-width, two-column list on iPad. Medium and large remain available. Tap **Add Widget**, then **Done**.
 4. Long-press the new widget and choose **Edit Widget**. Set **Published widget** to your Mac's **Agents** widget (or the name you gave it).
-5. Tap a session row to open its official app. Missing links open the session details instead.
+5. Tap a session row to open its official app directly. Details appear only if the link is missing or cannot be opened.
 
-These Home Screen controls follow [Apple's iPad widget instructions](https://support.apple.com/en-ie/guide/ipad/ipadb0de8630/27/ipados/27). Medium widgets also work; compact sizes and larger text may show fewer rows with an overflow count. USB is unnecessary after installation. Keep Tailscale connected and Wokintosh running on the publishing Mac. Refresh timing remains controlled by iPadOS; the widget's **As of** time shows the age of its source data.
+These Home Screen controls follow [Apple's iPad widget instructions](https://support.apple.com/en-ie/guide/ipad/ipadb0de8630/27/ipados/27). For the tall option on iPadOS 27+, swipe right to Today View and use its widget gallery. See Apple's [extra-large](https://developer.apple.com/documentation/widgetkit/widgetfamily/systemextralarge) and [extra-large portrait](https://developer.apple.com/documentation/widgetkit/widgetfamily/systemextralargeportrait) families for platform availability. Compact sizes and larger text may show fewer rows with an overflow count. USB is unnecessary after installation. Keep Tailscale connected and Wokintosh running on the publishing Mac. Refresh timing remains controlled by iPadOS; the widget's **As of** time shows the age of its source data.
 
 ## Session links and freshness
 
@@ -53,7 +53,7 @@ Update the collector on each source machine to supply session links. Codex uses 
 
 On the initial user's iPhone, both Claude forms opened an exact existing session. The preferred target is `claude://code/{bridge-id}`, with `https://claude.ai/code/{bridge-id}` as backup. `codex://threads/{thread-id}` also opened the distinct sample-project session with the unchanged UUID; this mobile route remains an undocumented compatibility contract. The explicitly labeled backup **Open ChatGPT (new chat)** uses `https://chatgpt.com/app`; it opens ChatGPT but does not select a Codex view or session. A failed exact-session link never opens that backup automatically. Do not substitute `/c/{thread-id}`.
 
-Rows route through the Wokintosh app into the official app. The OS accepting a link does not prove the official app resolved the right host/chat; use the session detail's backup link when needed. A missing link still shows title, machine, project and state.
+Rows route through the Wokintosh app into the official app without an intermediate details sheet. If the link is missing or the OS rejects it, details show the title, machine, project and state, with an explicit backup button when available. The OS accepting a link does not prove the official app resolved the right host/chat.
 
 Widgets request updates about every 15 minutes; iOS controls the schedule and can wait longer. **As of** is based on source observation, not a new HTTP response around old data. Snapshots become stale after 30 minutes and disconnected sources show Offline immediately, including an empty list. Mixed-source widgets also mark affected rows Offline or Stale. Compact widget sizes and larger text use fewer rows with accurate overflow counts; the layout keeps the source time visible. Companion views never review Done, send prompts, approve actions, or control the source session.
 

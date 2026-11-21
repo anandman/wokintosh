@@ -30,7 +30,7 @@ Existing sessions are discovered automatically. Optional observer hooks improve 
 
 ## iPhone and iPad widgets — development preview
 
-The universal iPhone/iPad app and medium/large home-screen widgets are available as source builds for direct installation. They are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
+The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. These builds are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
 
 The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. A read-only server binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
 

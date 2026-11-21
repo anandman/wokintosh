@@ -18,6 +18,19 @@ final class PhoneWidgetPresentationTests:XCTestCase {
         XCTAssertEqual(PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:true,connection:.current,at:now).rows.count,1)
         XCTAssertEqual(PhoneWidgetPresentation(agents:payload,size:.large,accessibility:true,connection:.current,at:now).rows.count,3)
     }
+    func testWideAndTallWidgetsShowMoreSessionsWithHonestOverflowAndFreshness() {
+        let payload=agents(16,observedAt:now.addingTimeInterval(-1700))
+        for size in [PhoneWidgetSize.extraLarge,.extraLargePortrait] {
+            let normal=PhoneWidgetPresentation(agents:payload,size:size,accessibility:false,connection:.current,at:now)
+            XCTAssertEqual(normal.rows.count,10);XCTAssertEqual(normal.hiddenCount,6)
+            XCTAssertEqual(normal.rows.map(\.id),Array(payload.rows.prefix(10)).map(\.id))
+            XCTAssertEqual(normal.staleTransition,now.addingTimeInterval(101))
+            let accessible=PhoneWidgetPresentation(agents:payload,size:size,accessibility:true,connection:.current,at:now)
+            XCTAssertEqual(accessible.rows.count,6);XCTAssertEqual(accessible.hiddenCount,10)
+        }
+        XCTAssertEqual(PhoneWidgetSize.extraLarge.columns,2)
+        XCTAssertEqual(PhoneWidgetSize.extraLargePortrait.columns,1)
+    }
     func testSpaceLimitedWidgetsKeepOrderedRowsAndDiscloseEveryOmission() {
         let payload=agents(8)
         let compact=PhoneWidgetPresentation(agents:payload,size:.medium,accessibility:false,connection:.current,at:now,maximumRows:1)

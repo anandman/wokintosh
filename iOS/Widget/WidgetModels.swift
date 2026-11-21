@@ -22,3 +22,17 @@ struct AgentWidgetEntry:TimelineEntry {
         make(snapshot:PhoneSnapshot(feed:PhoneFixtures.feed(at:now),state:.current,lastFetchedAt:now,paired:true),selection:nil,at:now,sample:true)
     }
 }
+
+/// Keep family interpretation identical for rendering and future stale entries.
+enum AgentWidgetLayout {
+    static func size(for family:WidgetFamily)->PhoneWidgetSize {
+        if family == .systemExtraLarge {return .extraLarge}
+        if #available(iOS 27.0,*),family == .systemExtraLargePortrait {return .extraLargePortrait}
+        return family == .systemLarge ? .large : .medium
+    }
+    static var supportedFamilies:[WidgetFamily] {
+        var families:[WidgetFamily]=[.systemMedium,.systemLarge,.systemExtraLarge]
+        if #available(iOS 27.0,*) {families.append(.systemExtraLargePortrait)}
+        return families
+    }
+}

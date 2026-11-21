@@ -17,7 +17,7 @@ struct AgentTimelineProvider:AppIntentTimelineProvider {
         let entry=AgentWidgetEntry.make(snapshot:snapshot,selection:configuration.widget?.id,at:now)
         var entries=[entry]
         if let agents=entry.widget?.agents {
-            let size:PhoneWidgetSize=context.family == .systemLarge ? .large : .medium
+            let size=AgentWidgetLayout.size(for:context.family)
             let transitions=[false,true].flatMap {accessibility in
                 // The smallest layouts may show only the source time and overflow.
                 let limits:[Int?]=[nil,0]
@@ -41,6 +41,6 @@ struct AgentTimelineProvider:AppIntentTimelineProvider {
         }
         .configurationDisplayName("Agents")
         .description("Follow Claude Code and Codex sessions across your machines. Tap a session to open its app.")
-        .supportedFamilies([.systemMedium,.systemLarge])
+        .supportedFamilies(AgentWidgetLayout.supportedFamilies)
     }
 }
