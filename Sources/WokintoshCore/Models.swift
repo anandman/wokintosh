@@ -8,10 +8,12 @@ public struct AgentSession: Codable, Equatable, Sendable {
     public var state: AgentState; public var updatedAt: Date; public var activity: String?; public var parentId: String?
     public var isHelper: Bool
     public var goalBlocked: Bool?
-    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false, goalBlocked: Bool? = nil) {
+    public var openURLs:SessionOpenURLs?
+    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false, goalBlocked: Bool? = nil,openURLs:SessionOpenURLs?=nil) {
         self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId; self.isHelper=isHelper || parentId != nil;self.goalBlocked=goalBlocked
+        self.openURLs=openURLs
     }
-    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper,goalBlocked }
+    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper,goalBlocked,openURLs }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(String.self,forKey:.id);provider=try c.decode(String.self,forKey:.provider)
@@ -20,6 +22,7 @@ public struct AgentSession: Codable, Equatable, Sendable {
         activity=try c.decodeIfPresent(String.self,forKey:.activity);parentId=try c.decodeIfPresent(String.self,forKey:.parentId)
         isHelper=(try c.decodeIfPresent(Bool.self,forKey:.isHelper) ?? false) || parentId != nil
         goalBlocked=try c.decodeIfPresent(Bool.self,forKey:.goalBlocked)
+        openURLs=try? c.decode(SessionOpenURLs.self,forKey:.openURLs)
     }
 }
 public struct HostInfo: Codable, Equatable, Sendable { public var id: String; public var name: String; public var platform: String }

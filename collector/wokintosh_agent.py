@@ -32,11 +32,11 @@ MAX_SHARED_SOURCES_BYTES = 1024 * 1024
 MAX_SHARED_ARTWORK_BYTES = 128 * 1024
 STALE_SECONDS = 1800
 MARKER = 'wokintosh-observer'
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 MAX_CACHE_BYTES = 1024 * 1024
 MAX_CACHE_ENTRIES = 512
 SCAN_GAP = {'_wokintosh_scan_gap': True}
-SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId', 'isHelper', 'goalBlocked')
+SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId', 'isHelper', 'goalBlocked', 'openURLs')
 STATES = {'working', 'needsAttention', 'blocked', 'idle', 'finished', 'unknown'}
 HOOK_EVENT_FIELDS = ('hook_event_name', 'session_id', 'sessionId', 'agent_id', 'tool_name',
                      'call_id', 'tool_use_id', 'notification_type', '_observedAt')
@@ -64,6 +64,37 @@ def parse_time(value, fallback):
 
 def clean(value, limit=100):
     return ' '.join(str(value or '').split())[:limit]
+
+
+def canonical_thread_id(value):
+    if not isinstance(value, str) or len(value) != 36:
+        return None
+    try:
+        return value if str(uuid.UUID(value)) == value.lower() else None
+    except ValueError:
+        return None
+
+
+def valid_bridge_id(value):
+    return value if isinstance(value, str) and re.fullmatch(r'session_[A-Za-z0-9]{16,128}', value) else None
+
+
+def session_open_urls(session):
+    """Provider-owned navigation; never derive a mobile bridge ID from a hook UUID."""
+    if not session or session.get('isHelper') or session.get('parentId'):
+        return None
+    if session.get('provider') == 'codex':
+        identity = canonical_thread_id(session.get('_codexThreadID'))
+        if identity and identity == session.get('id'):
+            primary = 'codex://threads/' + identity
+            return {'macOS': {'primary': primary},
+                    'iOS': {'primary': primary, 'fallback': 'https://chatgpt.com/app'}}
+    elif session.get('provider') == 'claude':
+        bridge = valid_bridge_id(session.get('_bridgeSessionID'))
+        if bridge:
+            target = {'primary': 'claude://code/' + bridge, 'fallback': 'https://claude.ai/code/' + bridge}
+            return {'macOS': dict(target), 'iOS': dict(target)}
+    return None
 
 
 def records(path):
@@ -144,9 +175,13 @@ def read_codex(path, now, title_index=None):
                     if isinstance(spawn, dict):
                         parent = parent if isinstance(parent, str) and parent else spawn.get('parent_thread_id')
             metadata = base_session(identity, 'codex', payload.get('cwd', ''), last_time, title, parent)
+            if canonical_thread_id(payload.get('id')):
+                metadata['_codexThreadID'] = payload['id']
             metadata['isHelper'] = metadata['isHelper'] or (isinstance(source, dict) and 'subagent' in source)
             if session and session['id'] == metadata['id']:
-                for field in ('title', 'project', 'parentId', 'isHelper'):
+                for field in ('title', 'project', 'parentId', 'isHelper', '_codexThreadID'):
+                    if field not in metadata:
+                        continue
                     session[field] = metadata[field]
             else:
                 session = metadata
@@ -606,6 +641,15 @@ def valid_session(value, provider=None):
     if value.get('goalBlocked') is not None and not isinstance(value['goalBlocked'], bool):
         return None
     result = {field: value.get(field) for field in SESSION_FIELDS}
+    # Wire targets are regenerated from bounded provider evidence, never trusted
+    # merely because a cached summary contained an arbitrary openURLs object.
+    result.pop('openURLs', None)
+    thread_id = canonical_thread_id(value.get('_codexThreadID'))
+    if value['provider'] == 'codex' and thread_id == value['id']:
+        result['_codexThreadID'] = thread_id
+    bridge_id = valid_bridge_id(value.get('_bridgeSessionID'))
+    if value['provider'] == 'claude' and bridge_id:
+        result['_bridgeSessionID'] = bridge_id
     result['isHelper'] = value.get('isHelper', False) or bool(value.get('parentId'))
     if type(value.get('_hookStateVersion')) is int and value['_hookStateVersion'] >= HOOK_STATE_VERSION:
         result['_hookStateVersion'] = value['_hookStateVersion']
@@ -1073,6 +1117,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
         if isinstance(item.get('id'), str):
             title_index[item['id']] = clean(item.get('thread_name') or item.get('title'), 90)
     sessions = {}
+    bridge_links = {}
     errors = []
     cached = load_parse_cache(state_dir / 'parse-cache.json')
     next_cache = {}
@@ -1122,6 +1167,8 @@ def make_snapshot(home, state_dir, now, host_name=None):
                 continue
             provider, identity = entry['provider'], entry['id']
             key = (provider, identity)
+            if provider == 'claude':
+                bridge_links[key] = entry.get('_bridgeSessionID')
             if key not in sessions:
                 sessions[key] = finalize(entry, now)
             elif (provider == 'claude' and entry.get('_hookStateVersion', 0) >= HOOK_STATE_VERSION and
@@ -1161,6 +1208,13 @@ def make_snapshot(home, state_dir, now, host_name=None):
         errors.append('Goal status unavailable')
     for key, session in sessions.items():
         session['goalBlocked'] = key in goal_identities if goal_identities is not None else (True if session.get('goalBlocked') is True else None)
+        if session['provider'] == 'claude' and bridge_links.get(key):
+            session['_bridgeSessionID'] = bridge_links[key]
+        targets = session_open_urls(session)
+        if targets:
+            session['openURLs'] = targets
+        else:
+            session.pop('openURLs', None)
     recent = [{field: s[field] for field in SESSION_FIELDS if field in s and (field != 'goalBlocked' or s[field] is not None)}
               for s in sessions.values()
               if (goal_identities is not None and (s['provider'], s['id']) in goal_identities) or
@@ -1611,6 +1665,12 @@ def ingest_hook(provider, event, home, state_dir, now):
                    if key in event and isinstance(event[key], str) and len(event[key]) <= 180}
     observation['_observedAt'] = stamp(now)
     result = apply_hook_state(session, event, now)
+    if provider == 'claude':
+        bridge = valid_bridge_id(os.environ.get('CLAUDE_CODE_BRIDGE_SESSION_ID'))
+        if event.get('hook_event_name') == 'SessionEnd':
+            result.pop('_bridgeSessionID', None)
+        elif bridge and not result.get('isHelper') and not result.get('parentId'):
+            result['_bridgeSessionID'] = bridge
     result['_hookStateVersion'] = HOOK_STATE_VERSION
     result['_hookEvents'] = (session.get('_hookEvents', []) + [observation])[-MAX_HOOK_EVENTS:]
     atomic_json(path, result)
