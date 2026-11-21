@@ -1,0 +1,186 @@
+import SwiftUI
+import UIKit
+import WidgetKit
+import WokintoshCore
+
+@main struct WokintoshPhoneApp:App {
+    @StateObject private var store=PhoneStore()
+    @Environment(\.scenePhase) private var scenePhase
+    var body:some Scene {
+        WindowGroup {
+            PhoneRootView(store:store)
+                .onOpenURL {store.handle($0)}
+                .task {await store.refresh()}
+                .onChange(of:scenePhase) {_,phase in if phase == .active {Task {await store.refresh()}}}
+        }
+    }
+}
+
+@MainActor final class PhoneStore:ObservableObject {
+    @Published var snapshot=PhoneSnapshot.empty
+    @Published var selectedWidgetID:UUID? {
+        didSet {UserDefaults.standard.set(selectedWidgetID?.uuidString,forKey:"selectedPublishedWidget")}
+    }
+    @Published var selectedSession:PublishedAgentRow?
+    @Published var message:String?
+    @Published private(set) var refreshing=false
+    private let repository:PhoneRepository?
+    let preview:Bool
+    init() {
+        #if DEBUG
+        preview=ProcessInfo.processInfo.arguments.contains("--sample-data")
+        #else
+        preview=false
+        #endif
+        do {
+            let repository=try preview ? PhoneFixtures.repository() : PhoneRepository.live()
+            let loaded=try repository.snapshot()
+            self.repository=repository;snapshot=loaded
+        } catch {repository=nil;message=error.localizedDescription}
+        selectedWidgetID=UserDefaults.standard.string(forKey:"selectedPublishedWidget").flatMap(UUID.init(uuidString:)) ?? snapshot.feed?.widgets.first?.id
+    }
+    var selectedWidget:PublishedWidget? {
+        snapshot.feed?.widgets.first(where:{$0.id==selectedWidgetID}) ?? snapshot.feed?.widgets.first
+    }
+    func refresh()async {
+        guard !refreshing,!preview,let repository else {return}
+        refreshing=true;defer {refreshing=false}
+        do {
+            snapshot=try await repository.refresh()
+            if selectedWidgetID==nil {selectedWidgetID=snapshot.feed?.widgets.first?.id}
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {message=error.localizedDescription}
+    }
+    func pair(_ text:String) {
+        guard let repository,!preview else {return}
+        do {
+            let pairing=try PhonePairing.decode(Data(text.utf8))
+            try repository.pair(pairing);snapshot=try repository.snapshot();selectedWidgetID=nil
+            Task {await refresh()}
+        } catch {message="The pairing code could not be saved. Scan the code from Settings → iPhone on your Mac.\n\n"+error.localizedDescription}
+    }
+    func unpair() {
+        guard let repository,!preview else {return}
+        do {try repository.unpair();snapshot = .empty;selectedWidgetID=nil;selectedSession=nil;WidgetCenter.shared.reloadAllTimelines()}
+        catch {snapshot = .empty;message=error.localizedDescription}
+    }
+    func handle(_ url:URL) {
+        guard url.scheme=="wokintosh",url.host != "dashboard" else {return}
+        if let repository,let fresh=try? repository.snapshot() {snapshot=fresh}
+        guard let route=PhoneRoute(url:url),let feed=snapshot.feed,let row=route.resolve(in:feed) else {
+            message="This session is no longer in the published widget. Refresh the list on your Mac and iPhone.";return
+        }
+        selectedWidgetID=route.widgetID;open(row)
+    }
+    func open(_ row:PublishedAgentRow) {
+        selectedSession=row
+        guard !preview,let target=row.session.openURLs?.iOS,let primary=target.url else {return}
+        UIApplication.shared.open(primary,options:[:]) { [weak self] opened in
+            guard !opened else {return}
+            Task { @MainActor in
+                if let fallback=target.fallbackURL {self?.openBackup(fallback)}
+                else {self?.message="The session’s app could not be opened on this iPhone."}
+            }
+        }
+    }
+    func openBackup(_ url:URL) {
+        guard !preview else {return}
+        UIApplication.shared.open(url,options:[:]) { [weak self] opened in
+            if !opened {Task { @MainActor in self?.message="The backup link could not be opened."}}
+        }
+    }
+}
+
+struct PhoneRootView:View {
+    @ObservedObject var store:PhoneStore
+    @State private var scanner=false
+    @State private var pasteCode=false
+    @State private var pairingText=""
+    @State private var confirmUnpair=false
+    var body:some View {
+        NavigationStack {
+            List {
+                if store.preview {Text("SAMPLE DATA").font(.caption.bold()).foregroundStyle(.purple)}
+                if !store.snapshot.paired {
+                    Section {
+                        Label(store.snapshot.state == .authorizationRequired ? "Pair your iPhone again" : "Your agents, at a glance",systemImage:"desktopcomputer.and.iphone")
+                            .font(.title3.bold()).padding(.vertical,8)
+                        Text("On your Mac, open Wokintosh Settings → iPhone, choose the Agent widgets to publish, then show the pairing code.")
+                        Button("Scan pairing code",systemImage:"qrcode.viewfinder") {scanner=true}
+                        Button("Paste pairing code") {pasteCode=true}
+                    }
+                } else {
+                    Section {
+                        HStack {
+                            Label(connectionLabel,systemImage:store.snapshot.state == .offline ? "wifi.slash" : "checkmark.shield")
+                            Spacer()
+                            if store.refreshing {ProgressView()}
+                            else {Button("Refresh",systemImage:"arrow.clockwise") {Task {await store.refresh()}}.labelStyle(.iconOnly)}
+                        }.font(.subheadline)
+                        if let date=store.selectedWidget?.agents?.asOf {Text("As of \(date.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.secondary)}
+                        if let widgets=store.snapshot.feed?.widgets,widgets.count>1 {
+                            Picker("Agent widget",selection:$store.selectedWidgetID) {
+                                ForEach(widgets) {widget in Text(widget.name).tag(Optional(widget.id))}
+                            }
+                        }
+                    }
+                    if let agents=store.selectedWidget?.agents {
+                        Section(store.selectedWidget?.name ?? "Agents") {
+                            ForEach(agents.rows) {row in
+                                Button {store.open(row)} label: {
+                                    PhoneAgentRowView(row:row,offline:store.snapshot.state == .offline,at:Date())
+                                }.buttonStyle(.plain)
+                            }
+                            if agents.rows.isEmpty {Text("No active sessions").foregroundStyle(.secondary)}
+                            if agents.hiddenCount>0 {Text("\(agents.hiddenCount) more sessions on your Mac").font(.caption).foregroundStyle(.secondary)}
+                            if agents.earlierDoneCount>0 {Text("Earlier Done · \(agents.earlierDoneCount) unread").font(.caption).foregroundStyle(.purple)}
+                        }
+                    } else {
+                        Text("No compatible Agent widgets are published. Select one in Settings → iPhone on your Mac.").foregroundStyle(.secondary)
+                    }
+                    Section {
+                        Text("Add a Wokintosh widget to your Home Screen, then choose a published Agent widget. iOS controls refresh timing; it may take longer than 15 minutes.").font(.caption).foregroundStyle(.secondary)
+                        Button("Unpair this iPhone",role:.destructive) {confirmUnpair=true}
+                    }
+                }
+            }
+            .navigationTitle("Wokintosh")
+            .refreshable {await store.refresh()}
+            .sheet(isPresented:$scanner) {PhoneScannerView {text in scanner=false;store.pair(text)}}
+            .sheet(isPresented:$pasteCode) {
+                NavigationStack {
+                    Form {
+                        Text("Paste only the private pairing code from Wokintosh on your Mac.")
+                        TextEditor(text:$pairingText).font(.system(.caption,design:.monospaced)).frame(minHeight:140)
+                        Button("Pair") {let code=pairingText;pairingText="";pasteCode=false;store.pair(code)}.disabled(pairingText.isEmpty)
+                    }.navigationTitle("Pair iPhone").toolbar {Button("Cancel") {pairingText="";pasteCode=false}}
+                }
+            }
+            .sheet(item:$store.selectedSession) {row in sessionDetail(row)}
+            .alert("Wokintosh",isPresented:Binding(get:{store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
+            .confirmationDialog("Unpair this iPhone and clear its saved widget data?",isPresented:$confirmUnpair,titleVisibility:.visible) {
+                Button("Unpair",role:.destructive) {store.unpair()}
+            }
+        }
+    }
+    private var connectionLabel:String {
+        store.snapshot.state == .offline ? "Offline · saved snapshot" : (store.snapshot.feed?.publisherName ?? "Publishing Mac")
+    }
+    private func sessionDetail(_ row:PublishedAgentRow)->some View {
+        NavigationStack {
+            Form {
+                PhoneAgentRowView(row:row,offline:store.snapshot.state == .offline,at:Date())
+                if let date=row.sourceObservedAt {LabeledContent("As of",value:date.formatted(date:.abbreviated,time:.shortened))}
+                if let url=row.session.openURLs?.iOS?.url {
+                    Button("Open session") {store.open(row)}
+                    if let backup=row.session.openURLs?.iOS?.fallbackURL {Button("Open backup link") {store.openBackup(backup)}}
+                    Text("Session actions happen in the official app. Opening a session does not review its Done notice.").font(.caption).foregroundStyle(.secondary)
+                    Text(url.scheme=="claude" ? "Opens Claude." : "Opens the session’s app.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("No direct link is available. Update the collector on this session’s machine; Claude sessions also need connected Remote Control and an observed bridge ID.").foregroundStyle(.secondary)
+                }
+            }.navigationTitle("Session").navigationBarTitleDisplayMode(.inline)
+                .toolbar {Button("Done") {store.selectedSession=nil}}
+        }
+    }
+}

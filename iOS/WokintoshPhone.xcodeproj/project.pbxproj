@@ -1,0 +1,495 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		17664A1C74B1C1ADBC531F2D /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7124D10F766FC4AA80DFAC42 /* WokintoshCore */; };
+		342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
+		5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
+		7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
+		9D5D2A53C058B972CB94805F /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4484A4DC95DB20A9DE7FE1B8 /* WokintoshCore */; };
+		A03100546B54559744776EC7 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
+		A168D47E8802623234CC63BF /* PhoneScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */; };
+		B5D4ED70BB6E3FD230C13A76 /* WokintoshPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */; };
+		BAE83C00CF25615DFCD76CAF /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */; };
+		CF6C2D01440E06FCFCE8EFA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */; };
+		D3473AB05F5FED8C660FE077 /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		DF7635198FB4C464ECA69276 /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
+		FAF650097388BCF0FE6B9409 /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A9B40BA8ACC611149D09B65 /* WokintoshPhone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WokintoshPhone.entitlements; sourceTree = "<group>"; };
+		0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepository.swift; sourceTree = "<group>"; };
+		306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepositoryTests.swift; sourceTree = "<group>"; };
+		4193D399610A9078D47B9EDC /* PhoneCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneCredentials.swift; sourceTree = "<group>"; };
+		4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WokintoshPhoneApp.swift; sourceTree = "<group>"; };
+		4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneScannerView.swift; sourceTree = "<group>"; };
+		5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WokintoshPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		64E84B7D32B3715D7AAC142C /* wokintosh */ = {isa = PBXFileReference; lastKnownFileType = folder; name = wokintosh; path = ..; sourceTree = SOURCE_ROOT; };
+		AA6DB780B0DE146F62B7502F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAgentRowView.swift; sourceTree = "<group>"; };
+		C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WokintoshPhoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F31018E93358078734C1300A /* PhoneFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFixtures.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		92F8A2CBE9B8ACE70D14FEAD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D5D2A53C058B972CB94805F /* WokintoshCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D9352B7038ECDF64CA42AF38 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17664A1C74B1C1ADBC531F2D /* WokintoshCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		37CE175FC322EE3382CA90B3 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		67F9548F38A7A737FDD7C7CE /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				64E84B7D32B3715D7AAC142C /* wokintosh */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		824B84075B68B7AA58CCD225 = {
+			isa = PBXGroup;
+			children = (
+				62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */,
+				886F9C859CBB1F51FC184C93 /* App */,
+				67F9548F38A7A737FDD7C7CE /* Packages */,
+				9A79C60F1ADADE1922C5916D /* Shared */,
+				37CE175FC322EE3382CA90B3 /* Tests */,
+				F89286D74B15707E436E5005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		886F9C859CBB1F51FC184C93 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AA6DB780B0DE146F62B7502F /* Info.plist */,
+				4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */,
+				0A9B40BA8ACC611149D09B65 /* WokintoshPhone.entitlements */,
+				4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9A79C60F1ADADE1922C5916D /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */,
+				4193D399610A9078D47B9EDC /* PhoneCredentials.swift */,
+				F31018E93358078734C1300A /* PhoneFixtures.swift */,
+				0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		F89286D74B15707E436E5005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */,
+				C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4D51A56910F774E12291522B /* WokintoshPhoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D9496DBBB63F5708695B5BF2 /* Build configuration list for PBXNativeTarget "WokintoshPhoneTests" */;
+			buildPhases = (
+				B91047B7EC8F53A8FBCD5947 /* Sources */,
+				D9352B7038ECDF64CA42AF38 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WokintoshPhoneTests;
+			packageProductDependencies = (
+				7124D10F766FC4AA80DFAC42 /* WokintoshCore */,
+			);
+			productName = WokintoshPhoneTests;
+			productReference = C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		64C482032F39E620E8F8563B /* WokintoshPhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E5205D8E1E62FC15A99E6E8 /* Build configuration list for PBXNativeTarget "WokintoshPhone" */;
+			buildPhases = (
+				027CE60AF1E1EAC492F5E159 /* Sources */,
+				5532DBB6DAC692E856862DD7 /* Resources */,
+				92F8A2CBE9B8ACE70D14FEAD /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WokintoshPhone;
+			packageProductDependencies = (
+				4484A4DC95DB20A9DE7FE1B8 /* WokintoshCore */,
+			);
+			productName = WokintoshPhone;
+			productReference = 5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		93849D73AF6B108CB18D1267 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					4D51A56910F774E12291522B = {
+						DevelopmentTeam = YOUR_TEAM_ID;
+						ProvisioningStyle = Automatic;
+					};
+					64C482032F39E620E8F8563B = {
+						DevelopmentTeam = YOUR_TEAM_ID;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F65BDD66B86677EEBECAC7F9 /* Build configuration list for PBXProject "WokintoshPhone" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 824B84075B68B7AA58CCD225;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F797839AB49583D279F567A1 /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F89286D74B15707E436E5005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				64C482032F39E620E8F8563B /* WokintoshPhone */,
+				4D51A56910F774E12291522B /* WokintoshPhoneTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5532DBB6DAC692E856862DD7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CF6C2D01440E06FCFCE8EFA7 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		027CE60AF1E1EAC492F5E159 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF7635198FB4C464ECA69276 /* PhoneAgentRowView.swift in Sources */,
+				342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */,
+				7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */,
+				D3473AB05F5FED8C660FE077 /* PhoneRepository.swift in Sources */,
+				A168D47E8802623234CC63BF /* PhoneScannerView.swift in Sources */,
+				B5D4ED70BB6E3FD230C13A76 /* WokintoshPhoneApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B91047B7EC8F53A8FBCD5947 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FAF650097388BCF0FE6B9409 /* PhoneAgentRowView.swift in Sources */,
+				5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */,
+				A03100546B54559744776EC7 /* PhoneFixtures.swift in Sources */,
+				BAE83C00CF25615DFCD76CAF /* PhoneRepository.swift in Sources */,
+				C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		6E6D47349923F84E1687523F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		77ACFB9F54C7110B07109B0F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B348400CD4354E2A365F9C7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		CCC23D81B1F72927E78D8743 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F3E292312E14C720F0CE9E95 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WokintoshPhone.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FDA1A925882D9244C3BDBED8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WokintoshPhone.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9E5205D8E1E62FC15A99E6E8 /* Build configuration list for PBXNativeTarget "WokintoshPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F3E292312E14C720F0CE9E95 /* Debug */,
+				FDA1A925882D9244C3BDBED8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D9496DBBB63F5708695B5BF2 /* Build configuration list for PBXNativeTarget "WokintoshPhoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77ACFB9F54C7110B07109B0F /* Debug */,
+				6E6D47349923F84E1687523F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F65BDD66B86677EEBECAC7F9 /* Build configuration list for PBXProject "WokintoshPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CCC23D81B1F72927E78D8743 /* Debug */,
+				B348400CD4354E2A365F9C7D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F797839AB49583D279F567A1 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4484A4DC95DB20A9DE7FE1B8 /* WokintoshCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WokintoshCore;
+		};
+		7124D10F766FC4AA80DFAC42 /* WokintoshCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WokintoshCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 93849D73AF6B108CB18D1267 /* Project object */;
+}
