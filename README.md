@@ -30,7 +30,7 @@ Existing sessions are discovered automatically. Optional observer hooks improve 
 
 ## iPhone widgets — development preview
 
-The companion iPhone app and medium/large home-screen widgets are being developed for direct installation. They are not included in the current public Mac download.
+The companion iPhone app and medium/large home-screen widgets are available as source builds for direct installation. They are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
 
 The display Mac publishes only Agent widgets you select in **Settings → iPhone**. Publishing is off by default. A read-only server binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
 

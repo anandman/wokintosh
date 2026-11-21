@@ -119,7 +119,7 @@ struct WidgetActionSettings: View {
             Section("Harness apps") {
                 applicationControls(.codex)
                 applicationControls(.claude)
-                Text("Opens the chosen app for the clicked session’s harness on this Mac. Opening the app does not select a specific session.")
+                Text("Uses the clicked session’s Mac link when its collector supplies one, with the chosen harness app as a backup. Remote sessions must be reachable in that app. Opening a session does not mark it reviewed.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

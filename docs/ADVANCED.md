@@ -79,7 +79,7 @@ Music and Calendar access are requested only when you connect them. Music must b
 
 Agent discovery reads local transcripts or remote collector snapshots over SSH. The collector caches bounded summaries, not full transcript bodies. Unknown evidence remains Unknown; a failed connection remains Offline. Old completed history is not imported as new Done notices on the first connection. New unreviewed completions and registered blocked goals persist across app restarts.
 
-Widget actions open applications on the display Mac, including when a widget shows a remote machine. Agent actions open the selected provider app and do not navigate to an exact session or mark it reviewed. There is no lock-screen display. App updates are available through Sparkle in versions 1.1 and later; remote collectors are updated separately in Machines.
+Widget actions open applications on the display Mac, including when a widget shows a remote machine. The Agent harness action prefers the collector's macOS session link, with its configured provider app as a backup. The official app must be able to resolve that session and its source machine. None, custom application and custom link choices retain their behavior. Opening a session never marks it reviewed. There is no lock-screen display. App updates are available through Sparkle in versions 1.1 and later; remote collectors are updated separately in Machines.
 
 See the [quick start](../QUICKSTART.md), [README](../README.md), [release notes](../RELEASE_NOTES.md) and [credits](../THIRD_PARTY_NOTICES.md).
 
@@ -145,7 +145,7 @@ Collapse affects only pending Done rows; Needs You, Working, and Blocked stay in
 the main list. Turning on recent inactive sessions does not bring collapsed unread
 rows back into the main list. Change the timeout to Until reviewed to show them
 there again. The dashboard tracks reminders and opens configured applications;
-it does not display the original agent output or navigate to an exact session.
+it does not display the original agent output. Its configured Open action can use an available session link; reviewing a notice only clears its highlight.
 
 ## System reading labels
 
