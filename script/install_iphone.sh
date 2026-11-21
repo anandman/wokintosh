@@ -34,7 +34,11 @@ if [ -n "$wokintosh_phone_team" ] && ! [[ "$wokintosh_phone_team" =~ ^[A-Z0-9]{1
     printf '%s\n' 'Use the ten-character Apple developer team ID.' >&2; exit 2
 fi
 wokintosh_phone_root=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
-wokintosh_phone_build=${WOKINTOSH_PHONE_BUILD_DIR:-/private/tmp/wokintosh-phone-device}
+# Asset thinning changes the signed resources for each device. Keep incremental
+# products separate so switching between iPhone and iPad cannot reuse a stale seal.
+wokintosh_phone_default_build=/private/tmp/wokintosh-phone-device
+if [ -n "$wokintosh_phone_device" ]; then wokintosh_phone_default_build+="-$wokintosh_phone_device"; fi
+wokintosh_phone_build=${WOKINTOSH_PHONE_BUILD_DIR:-$wokintosh_phone_default_build}
 python3 - "$wokintosh_phone_root" "$wokintosh_phone_build" <<'PY'
 import os,sys
 source,build=map(os.path.realpath,sys.argv[1:])

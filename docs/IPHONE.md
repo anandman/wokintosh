@@ -18,7 +18,7 @@ Alternatively, once Xcode signing/device setup is ready:
 script/install_iphone.sh --device YOUR_DEVICE_UDID
 ```
 
-The helper builds outside Dropbox, verifies the signed app, embedded widget and their matching App Group/Keychain capabilities, and installs to the explicitly chosen device. `--build-only` prepares a signed build without installing; `--dry-run` prints the operations. Override the project team using `--team YOUR_TEAM_ID` when appropriate. It never requests a password in the terminal, revokes certificates, publishes to an app store, or changes another app.
+The helper builds outside Dropbox in a separate folder for each device, verifies the signed app, embedded widget and their matching App Group/Keychain capabilities, and installs to the explicitly chosen device. Separate folders keep iPhone and iPad asset thinning from invalidating each other's signed resources. `--build-only` prepares a signed build without installing; `--dry-run` prints the operations. Override the project team using `--team YOUR_TEAM_ID` when appropriate. It never requests a password in the terminal, revokes certificates, publishes to an app store, or changes another app.
 
 ## Connect the display Mac
 
