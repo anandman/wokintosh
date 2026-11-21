@@ -232,6 +232,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     func rows(for widget:Widget) -> [SessionRow] {
         var raw:[String:SessionRow]=[:]
+        let connectedHosts=Set(feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
         if document.previewMode {
             for var row in previewRows() {
                 if reviewedPreviewIDs.contains(row.id) { row.completionPending=false }
@@ -242,10 +243,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             for row in feedRows() { raw[row.id]=row }
             for completion in document.completions.pending where !document.blockedSessions.contains(completion.id) && !document.reportedBlockedSessions.contains(completion.id) {
                 if let current=raw[completion.id],current.session.state == .blocked || current.session.goalBlocked == true { continue }
-                raw[completion.id]=completion.overlay(on:raw[completion.id])
+                raw[completion.id]=completion.overlay(on:raw[completion.id],hostConnected:connectedHosts.contains(completion.hostID))
             }
         }
-        let connectedHosts=Set(feeds.values.filter(\.connected).compactMap{$0.snapshot?.host.id})
         let completeHosts=Set(feeds.values.filter { $0.connected && ($0.snapshot?.errors?.isEmpty ?? true) }.compactMap{$0.snapshot?.host.id})
         let reported=document.previewMode ? Array(raw.values) : document.reportedBlockedSessions.applying(to:Array(raw.values),connectedHostIDs:completeHosts)
         let rows=document.previewMode ? reported : document.blockedSessions.applying(to:reported,connectedHostIDs:connectedHosts)

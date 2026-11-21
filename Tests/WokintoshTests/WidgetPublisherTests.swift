@@ -61,6 +61,29 @@ final class WidgetPublisherTests:XCTestCase {
         _=try store.applySetup(setup)
         XCTAssertTrue(publisher.options.selectedWidgetIDs.isEmpty)
     }
+    @MainActor func testRetainedDoneUsesHostConnectivityAfterLeavingCurrentInventory() throws {
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let publisher=WidgetPublisher(directory:directory,credentials:MemoryPublisherCredentials(),servesNetwork:false)
+        let store=DashboardStore(dataDirectory:directory,publisher:publisher)
+        let now=Date()
+        var session=AgentSession(id:"retained",provider:"codex",title:"Finished",project:"Project",state:.working,updatedAt:now.addingTimeInterval(-60))
+        let active=SessionRow(hostID:"source",hostName:"Source",session:session)
+        var tracker=CompletionTracker();tracker.ingest([active],at:now.addingTimeInterval(-60))
+        session.state = .finished;session.updatedAt=now
+        tracker.ingest([SessionRow(hostID:"source",hostName:"Source",session:session)],at:now)
+        store.document.completions=tracker
+        let json="""
+        {"schemaVersion":1,"host":{"id":"source","name":"Source","platform":"macOS"},"generatedAt":"2026-11-20T20:00:00Z","sessions":[],"system":{}}
+        """
+        let snapshot=try Snapshot.decode(Data(json.utf8))
+        store.feeds=["source":FeedStatus(name:"Source",snapshot:snapshot)]
+        let widget=try XCTUnwrap(store.document.widgets.first(where:{$0.kind == .agents}))
+        XCTAssertEqual(store.rows(for:widget).count,1)
+        XCTAssertEqual(store.rows(for:widget).first?.connected,true)
+        store.feeds["source"]?.error="Offline"
+        XCTAssertEqual(store.rows(for:widget).first?.connected,false)
+    }
     @MainActor func testDefaultOffAndSelectionReductionRevokesOldData() throws {
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer {try? FileManager.default.removeItem(at:directory)}

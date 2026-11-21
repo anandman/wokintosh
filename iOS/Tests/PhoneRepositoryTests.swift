@@ -56,6 +56,30 @@ final class PhoneRepositoryTests:XCTestCase {
             XCTAssertEqual(returned.state,.current)
         }
     }
+    func testLatestRequestWinsWhenSamePairingResponsesCompleteInReverseOrder() async throws {
+        for outcome in 0..<3 {
+            let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer {try? FileManager.default.removeItem(at:root)}
+            let cache=PhoneSnapshotCache(directory:root),credentials=MemoryPhoneCredentials(),delayed=SuspendedPhoneClient()
+            let old=PhoneRepository(cache:cache,credentials:credentials,client:delayed)
+            try old.pair(pairing())
+            let privateFeed=PhoneFixtures.feed()
+            try cache.store(privateFeed,fetchedAt:Date())
+            let request=Task {try await old.refresh()}
+            await delayed.waitUntilStarted()
+            let removed=PublishedWidgetFeed(publisherID:privateFeed.publisherID,publisherName:"Display",publishedAt:Date(),widgets:[])
+            let current=PhoneRepository(cache:cache,credentials:credentials,client:ImmediatePhoneClient(feed:removed))
+            _=try await current.refresh()
+            if outcome==0 {await delayed.finish(.success(privateFeed))}
+            else if outcome==1 {await delayed.finish(.failure(PhoneFetchError.unavailable))}
+            else {await delayed.finish(.failure(PhoneFetchError.unauthorized))}
+            let returned=try await request.value
+            XCTAssertEqual(returned.state,.current)
+            XCTAssertEqual(returned.feed?.widgets.count,0)
+            XCTAssertNotNil(credentials.value)
+            XCTAssertEqual(cache.load()?.widgets.count,0)
+        }
+    }
     func pairing()throws->PhonePairing {try PhonePairing(endpoint:"https://display.example.ts.net:9443/wokintosh/v1/widgets",token:String(repeating:"A",count:43))}
     func testUnpairedRepositoryNeverReturnsAStalePrivateFeed() throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

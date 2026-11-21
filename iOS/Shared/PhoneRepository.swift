@@ -59,18 +59,19 @@ struct PhoneRepository:Sendable {
         }
     }
     func refresh()async throws->PhoneSnapshot {
-        let request:(PhonePairing,UUID)?=try coordinator.withLock {
+        let request:(PhonePairing,UUID,UUID)?=try coordinator.withLock {
             guard cache.status().state != .authorizationRequired,let pairing=try credentials.load() else {return nil}
-            return (pairing,try coordinator.generation())
+            return (pairing,try coordinator.generation(),try coordinator.beginRequest())
         }
-        guard let (pairing,generation)=request else {return try snapshot()}
+        guard let (pairing,generation,requestID)=request else {return try snapshot()}
         let result:Result<PublishedWidgetFeed,Error>
         do {result = .success(try await client.fetch(pairing))}
         catch {result = .failure(error)}
         return try coordinator.withLock {
             // The app and extension share this generation and lock. Every response outcome
             // belongs to the captured pairing, including failures and pairing with the same code.
-            guard try coordinator.generation()==generation,try credentials.load()==pairing,
+            // A newer app/extension request also supersedes every outcome of this one.
+            guard try coordinator.generation()==generation,coordinator.latestRequest()==requestID,try credentials.load()==pairing,
                   cache.status().state != .authorizationRequired else {return try snapshotLocked()}
             switch result {
             case .success(let feed):try cache.store(feed,fetchedAt:Date())

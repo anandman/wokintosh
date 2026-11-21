@@ -8,9 +8,9 @@ public struct CompletionRecord: Codable, Equatable, Identifiable, Sendable {
     public var id: String { row.id }
     public var row: SessionRow { SessionRow(hostID:hostID,hostName:hostName,session:session,completionPending:true,completionObservedAt:observedAt) }
     /// Retain the unread receipt while using the current source's connectivity/navigation.
-    public func overlay(on current:SessionRow?)->SessionRow {
+    public func overlay(on current:SessionRow?,hostConnected:Bool=false)->SessionRow {
         var value=row
-        value.connected=current?.connected ?? false
+        value.connected=current?.connected ?? hostConnected
         if let current,current.connected {value.session.openURLs=current.session.openURLs}
         return value
     }
