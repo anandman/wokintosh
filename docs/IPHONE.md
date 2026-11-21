@@ -33,9 +33,19 @@ The helper builds outside Dropbox, verifies the signed app, embedded widget and 
    This uses Tailscale Serve, not Funnel, and preserves other ports/routes. If Tailscale requests HTTPS consent, finish it through its own setup page. Keep access limited to your intended tailnet devices/users. Do not replace another existing service on port 9443.
 4. Paste the HTTPS `.ts.net` address shown by Tailscale into Wokintosh and save it. Wokintosh fills the dedicated port/path.
 5. Show the private pairing code. In the companion app choose **Scan pairing code**. The code grants read access to selected widgets; keep it private.
-6. Add a Wokintosh **Agents** widget to your Home Screen. Long-press/edit the widget to choose a published Agent widget.
+6. Add the **Agents** widget using the steps below.
 
 The display Mac and Wokintosh must remain running. The dashboard window can be closed. Your iPhone or iPad needs its Tailscale connection. There is no public relay, iCloud sync, remote command endpoint, or keep-awake change.
+
+## Add the Home Screen widget
+
+1. Open Wokintosh on your paired iPad and tap **Refresh** so its saved list includes the latest collector links.
+2. Long-press an empty part of the Home Screen, then choose **Edit → Add Widget**.
+3. Search for **Wokintosh**, choose **Agents**, and swipe to the **large** size for more visible sessions. Tap **Add Widget**, then **Done**.
+4. Long-press the new widget and choose **Edit Widget**. Set **Published widget** to your Mac's **Agents** widget (or the name you gave it).
+5. Tap a session row to open its official app. Missing links open the session details instead.
+
+These Home Screen controls follow [Apple's iPad widget instructions](https://support.apple.com/en-ie/guide/ipad/ipadb0de8630/27/ipados/27). Medium widgets also work; compact sizes and larger text may show fewer rows with an overflow count. USB is unnecessary after installation. Keep Tailscale connected and Wokintosh running on the publishing Mac. Refresh timing remains controlled by iPadOS; the widget's **As of** time shows the age of its source data.
 
 ## Session links and freshness
 
