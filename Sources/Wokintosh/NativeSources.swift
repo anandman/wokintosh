@@ -4,6 +4,7 @@ import Combine
 import EventKit
 import ImageIO
 import WokintoshCore
+import WokintoshMacTransport
 
 protocol CalendarReading: Sendable {
     func authorizationStatus() -> EKAuthorizationStatus

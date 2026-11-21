@@ -1,4 +1,5 @@
 import Foundation
+import WokintoshCore
 
 public struct RemoteInstallCommand: Sendable {
     public let executable: String

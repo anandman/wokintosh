@@ -31,4 +31,13 @@ final class SessionLinksTests:XCTestCase {
         }
         XCTAssertEqual(SessionOpenTarget.validURL("claude://code/session_abc")?.scheme,"claude")
     }
+    func testOnlyHarnessActionPrefersTheSelectedSessionsMacURL() throws {
+        var s=try session(["macOS":["primary":"codex://threads/selected"]])
+        let action=WidgetAction(kind:.openAgentApp)
+        XCTAssertEqual(try action.target(provider:s.provider,session:s),.link(URL(string:"codex://threads/selected")!))
+        XCTAssertNil(try WidgetAction().target(provider:s.provider,session:s))
+        XCTAssertEqual(try WidgetAction(kind:.openApplication,applicationBundleID:"test.custom").target(provider:s.provider,session:s),.application(bundleID:"test.custom"))
+        s.openURLs=nil
+        XCTAssertEqual(try action.target(provider:s.provider,session:s),.application(bundleID:"com.openai.codex"))
+    }
 }

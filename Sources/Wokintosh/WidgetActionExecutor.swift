@@ -16,6 +16,13 @@ import WokintoshCore
             guard launchURL(url) else {throw ActionLaunchError.linkUnavailable}
         }
     }
+    func open(_ targets:[WidgetActionTarget]) async throws {
+        var last:Error?
+        for target in targets {
+            do {try await open(target);return} catch {last=error}
+        }
+        if let last {throw last}
+    }
     private static func openApplication(_ id:String) async throws {
         guard let url=NSWorkspace.shared.urlForApplication(withBundleIdentifier:id) else {throw ActionLaunchError.applicationUnavailable}
         let configuration=NSWorkspace.OpenConfiguration();configuration.activates=true

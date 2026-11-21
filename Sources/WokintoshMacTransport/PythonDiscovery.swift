@@ -1,4 +1,5 @@
 import Foundation
+import WokintoshCore
 
 /// The same actual-version probe is used by local collection and remote installation.
 /// The interpreter must also be suitable for the remote collector's pinned shebang.

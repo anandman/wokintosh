@@ -1,5 +1,6 @@
 import Foundation
 import WokintoshCore
+import WokintoshMacTransport
 
 enum RemoteInstaller {
     static func install(host: RemoteHost, collectorURL: URL,

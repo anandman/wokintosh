@@ -7,11 +7,12 @@ struct WidgetActionArea<Content:View>:View {
     let widget:DashboardWidget
     var enabled=true
     var provider:String?=nil
+    var session:AgentSession?=nil
     var accessibilityName:String?=nil
     @ViewBuilder var content:()->Content
     var body:some View {
         if enabled && !store.document.previewMode && widget.action.kind != .none {
-            Button {store.activateWidget(widget.id,provider:provider)} label: {
+            Button {store.activateWidget(widget.id,provider:provider,session:session)} label: {
                 content().contentShape(Rectangle())
             }.buttonStyle(.plain)
                 .accessibilityHint("Opens this widget’s configured app or link")

@@ -26,7 +26,7 @@ struct EarlierDoneView:View {
                                     Text("Completed \(row.session.updatedAt.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.secondary)
                                     HStack {
                                         if let widget,widget.action.kind != .none {
-                                            Button("Open Configured App or Link") {store.activateWidget(widget.id,provider:row.session.provider)}
+                                            Button("Open Configured App or Link") {store.activateWidget(widget.id,provider:row.session.provider,session:row.session)}
                                                 .disabled(!actionsEnabled || store.document.previewMode)
                                         }
                                         Spacer()

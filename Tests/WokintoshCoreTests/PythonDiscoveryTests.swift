@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import WokintoshCore
+@testable import WokintoshMacTransport
 
 final class PythonDiscoveryTests:XCTestCase {
     func testVersionedPythonOnSSHPathIsFoundWhenPython3IsTooOld() throws {

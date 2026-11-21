@@ -1,5 +1,6 @@
 import XCTest
 @testable import WokintoshCore
+@testable import WokintoshMacTransport
 final class TransportTests: XCTestCase {
     func testRunnerCapturesOutput() throws {
         XCTAssertEqual(String(data: try CommandRunner.run("/bin/echo", arguments: ["snapshot"], timeout: 1), encoding: .utf8), "snapshot\n")

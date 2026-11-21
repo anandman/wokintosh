@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import WokintoshCore
+import WokintoshMacTransport
 
 typealias DashboardWidget = WokintoshCore.Widget
 
@@ -160,20 +161,21 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             await self.native.refreshConnectionStatus(readCalendarData:!self.document.previewMode && (includeCalendarInventory || localCalendar || self.sharing.options.shareCalendar))
         }
     }
-    func activateWidget(_ id:UUID,provider:String?=nil) {
+    func activateWidget(_ id:UUID,provider:String?=nil,session:AgentSession?=nil) {
         guard !document.previewMode else {return}
-        testWidgetAction(id,provider:provider)
+        testWidgetAction(id,provider:provider,session:session)
     }
     /// Also used by the explicit Test action button in the widget inspector.
-    func testWidgetAction(_ id:UUID,provider:String?=nil) {
+    func testWidgetAction(_ id:UUID,provider:String?=nil,session:AgentSession?=nil) {
         guard let widget=document.widgets.first(where:{$0.id==id}),!actionInFlight.contains(id) else {return}
         do {
-            guard let target=try widget.action.target(provider:provider) else {return}
+            let targets=try widget.action.targets(provider:provider,session:session)
+            guard !targets.isEmpty else {return}
             actionInFlight.insert(id)
             Task { [weak self] in
                 guard let self else {return}
                 defer {self.actionInFlight.remove(id)}
-                do {try await self.actionExecutor.open(target)}
+                do {try await self.actionExecutor.open(targets)}
                 catch {self.presentMessage?(AppMessage(title:"Could Not Open Widget Action",message:error.localizedDescription,isError:true))}
             }
         } catch {presentMessage?(AppMessage(title:"Could Not Open Widget Action",message:error.localizedDescription,isError:true))}

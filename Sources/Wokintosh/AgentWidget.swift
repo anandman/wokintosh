@@ -69,11 +69,11 @@ struct AgentWidget: View {
     @ViewBuilder func agentRow(_ row:SessionRow,wide:Bool,narrow:Bool,t:Double)->some View {
         HStack(spacing:wide ? 10 : 8) {
             if narrow {
-                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,accessibilityName:"Open app for \(row.session.title)") {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,session:row.session,accessibilityName:"Open app for \(row.session.title)") {
                     ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
                 }
                 VStack(alignment:.leading,spacing:1) {
-                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider) {
+                    WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,session:row.session) {
                         Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).accessibilityLabel(row.session.title).frame(maxWidth:.infinity,alignment:.leading)
                     }
                     HStack(spacing:6) {
@@ -82,9 +82,9 @@ struct AgentWidget: View {
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
             } else {
-                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider) {
+                WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,session:row.session) {
                     HStack(spacing:wide ? 10 : 8) {
-                        ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
+                    ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
                             .accessibilityLabel(row.session.provider == "codex" ? "Codex" : "Claude Code")
                         if wide {
                             Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading).accessibilityLabel(row.session.title)
@@ -102,7 +102,7 @@ struct AgentWidget: View {
             }
         }.contextMenu {
             if widget.action.kind != .none {
-                Button("Open Configured Action") {if actionsEnabled {store.activateWidget(widget.id,provider:row.session.provider)}}
+                Button("Open Configured Action") {if actionsEnabled {store.activateWidget(widget.id,provider:row.session.provider,session:row.session)}}
                     .disabled(!actionsEnabled || store.document.previewMode)
                 Divider()
             }

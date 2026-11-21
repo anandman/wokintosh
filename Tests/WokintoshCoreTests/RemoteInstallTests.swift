@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import WokintoshCore
+@testable import WokintoshMacTransport
 
 final class RemoteInstallTests: XCTestCase {
     private let snapshot = Data(#"{"schemaVersion":1,"host":{"id":"fixture-host","name":"Fixture","platform":"linux"},"generatedAt":"2026-10-30T10:00:00Z","sessions":[],"system":{}}"#.utf8)

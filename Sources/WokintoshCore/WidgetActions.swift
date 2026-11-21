@@ -43,11 +43,12 @@ public struct WidgetAction:Codable,Equatable,Sendable {
         claudeBundleID=(try? c.decode(String.self,forKey:.claudeBundleID)) ?? "com.anthropic.claudefordesktop"
         claudeApplicationName=(try? c.decode(String.self,forKey:.claudeApplicationName)) ?? ""
     }
-    public func target(provider:String?=nil)throws->WidgetActionTarget? {
+    public func target(provider:String?=nil,session:AgentSession?=nil)throws->WidgetActionTarget? {
         switch kind {
         case .none:return nil
         case .openApplication:return try application(applicationBundleID)
         case .openAgentApp:
+            if let url=session?.openURLs?.macOS?.url {return .link(url)}
             switch provider {
             case "codex":return try application(codexBundleID)
             case "claude":return try application(claudeBundleID)
@@ -62,6 +63,15 @@ public struct WidgetAction:Codable,Equatable,Sendable {
             if ["http","https"].contains(scheme),components.host?.isEmpty != false {throw WidgetActionError.invalidLink}
             return .link(result)
         }
+    }
+    public func targets(provider:String?=nil,session:AgentSession?=nil)throws->[WidgetActionTarget] {
+        guard let first=try target(provider:provider,session:session) else {return []}
+        var result=[first]
+        if kind == .openAgentApp {
+            if let url=session?.openURLs?.macOS?.fallbackURL,!result.contains(.link(url)) {result.append(.link(url))}
+            if let app=try? target(provider:provider),!result.contains(app) {result.append(app)}
+        }
+        return result
     }
     private func application(_ value:String)throws->WidgetActionTarget {
         let id=value.trimmingCharacters(in:.whitespacesAndNewlines)
