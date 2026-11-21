@@ -26,6 +26,8 @@ targets:
     dependencies:
       - package: Wokintosh
         product: WokintoshCore
+      - target: WokintoshAgentWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.wokintosh.phone
@@ -47,12 +49,40 @@ targets:
       properties:
         com.apple.security.application-groups: [group.dev.wokintosh.phone.shared]
         keychain-access-groups: [$(AppIdentifierPrefix)dev.wokintosh.phone.shared]
+  WokintoshAgentWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - Shared
+    dependencies:
+      - package: Wokintosh
+        product: WokintoshCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.wokintosh.phone.agents
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Wokintosh Agents
+        WokintoshKeychainAccessGroup: $(AppIdentifierPrefix)dev.wokintosh.phone.shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/WokintoshAgentWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.wokintosh.phone.shared]
+        keychain-access-groups: [$(AppIdentifierPrefix)dev.wokintosh.phone.shared]
   WokintoshPhoneTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - Tests
       - Shared
+      - Widget/WidgetModels.swift
+      - Widget/AgentWidgetView.swift
     dependencies:
       - package: Wokintosh
         product: WokintoshCore

@@ -33,7 +33,11 @@ import WokintoshCore
         preview=false
         #endif
         do {
+            #if DEBUG
             let repository=try preview ? PhoneFixtures.repository() : PhoneRepository.live()
+            #else
+            let repository=try PhoneRepository.live()
+            #endif
             let loaded=try repository.snapshot()
             self.repository=repository;snapshot=loaded
         } catch {repository=nil;message=error.localizedDescription}
@@ -164,7 +168,9 @@ struct PhoneRootView:View {
         }
     }
     private var connectionLabel:String {
-        store.snapshot.state == .offline ? "Offline · saved snapshot" : (store.snapshot.feed?.publisherName ?? "Publishing Mac")
+        if store.snapshot.state == .offline {return "Offline · saved snapshot"}
+        if (store.selectedWidget?.agents?.offlineSourceCount ?? 0)>0 {return "Source offline · last known state"}
+        return store.snapshot.feed?.publisherName ?? "Publishing Mac"
     }
     private func sessionDetail(_ row:PublishedAgentRow)->some View {
         NavigationStack {

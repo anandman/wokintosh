@@ -50,23 +50,24 @@ public struct PublishedAgents:Codable,Equatable,Sendable {
     public let workingCount:Int
     public let doneCount:Int
     public let sourceObservedAt:Date?
+    public var offlineSourceCount:Int?=nil
     public var hiddenCount:Int {max(0,totalCount-rows.count)}
     public var asOf:Date? {
         guard !rows.isEmpty else {return sourceObservedAt}
         guard rows.allSatisfy({$0.sourceObservedAt != nil}) else {return nil}
         return rows.compactMap(\.sourceObservedAt).min()
     }
-    public static func make(rows:[SessionRow],sourceObservations:[String:Date],interval:DoneCollapseInterval,showFinished:Bool,at now:Date)->PublishedAgents {
+    public static func make(rows:[SessionRow],sourceObservations:[String:Date],interval:DoneCollapseInterval,showFinished:Bool,offlineSourceCount:Int=0,at now:Date)->PublishedAgents {
         let completion=CompletionPresentation.make(rows:rows,interval:interval,at:now)
         let page=completion.page(capacity:128,showFinished:showFinished)
         return PublishedAgents(rows:page.visible.map{PublishedAgentRow(row:$0,observedAt:sourceObservations[$0.hostID])},
                                totalCount:page.visible.count+page.hiddenCount,earlierDoneCount:completion.earlier.count,
                                attentionCount:page.attentionCount,workingCount:page.workingCount,doneCount:page.doneCount,
-                               sourceObservedAt:sourceObservations.values.min())
+                               sourceObservedAt:sourceObservations.values.min(),offlineSourceCount:max(0,offlineSourceCount))
     }
     public var isValid:Bool {
         let counts=[totalCount,earlierDoneCount,attentionCount,workingCount,doneCount]
-        return rows.count<=128 && rows.allSatisfy(\.isValid) && Set(rows.map(\.id)).count==rows.count &&
+        return (offlineSourceCount ?? 0)>=0 && (offlineSourceCount ?? 0)<=10000 && rows.count<=128 && rows.allSatisfy(\.isValid) && Set(rows.map(\.id)).count==rows.count &&
         counts.allSatisfy{$0>=0 && $0<=1_000_000} && totalCount>=rows.count && attentionCount<=totalCount && workingCount<=totalCount
     }
 }

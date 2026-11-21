@@ -8,7 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		17664A1C74B1C1ADBC531F2D /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7124D10F766FC4AA80DFAC42 /* WokintoshCore */; };
+		2D760AFB02D7BB7A08DC2063 /* PhoneWidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */; };
 		342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
+		398A3D61C17562A3CF7A8CF2 /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = D14623963FB5621E522FF987 /* WokintoshCore */; };
+		3F4CE88C15B6693AE611AC52 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
+		47CEBEF62BF45D63D3EED71A /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
+		491705590F5D1DF9DF632DCF /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		5C43FECB2FB516AF5299041F /* AgentWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */; };
 		5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
 		7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
 		9D5D2A53C058B972CB94805F /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4484A4DC95DB20A9DE7FE1B8 /* WokintoshCore */; };
@@ -16,30 +22,77 @@
 		A168D47E8802623234CC63BF /* PhoneScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */; };
 		B5D4ED70BB6E3FD230C13A76 /* WokintoshPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */; };
 		BAE83C00CF25615DFCD76CAF /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
+		BDF69639EFD7AD5E81CED348 /* WidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */; };
+		C0B354E046569C3B6DD95472 /* AgentWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */; };
 		C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */; };
 		CF6C2D01440E06FCFCE8EFA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */; };
 		D3473AB05F5FED8C660FE077 /* PhoneRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */; };
 		DF7635198FB4C464ECA69276 /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
+		EA54FB23392F3388B4B1C38F /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
+		EBCCE16C36405DCECD46DAF7 /* WidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */; };
+		EBDE51E4411377BD98E1A352 /* WokintoshAgentWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 983CCC8961FB7C6FD56BBFFD /* WokintoshAgentWidget.swift */; };
+		EE18B94E09E912560875C395 /* WokintoshAgentWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C93AA0D4A44449D0F78792F8 /* WokintoshAgentWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FAF650097388BCF0FE6B9409 /* PhoneAgentRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */; };
+		FFAA5D8583D2E79743A7A43E /* PublishedWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE73DA4ABA3062F446828C56 /* PublishedWidgetIntent.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1BD94F52DAAA6BCE1F89A79F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 93849D73AF6B108CB18D1267 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8F98B15BCFE8462D35EF4E93;
+			remoteInfo = WokintoshAgentWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		76AA11A0FFF8C04F2E14E21B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				EE18B94E09E912560875C395 /* WokintoshAgentWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0A9B40BA8ACC611149D09B65 /* WokintoshPhone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WokintoshPhone.entitlements; sourceTree = "<group>"; };
 		0F1261B2FCFAE08CB5730ACC /* PhoneRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepository.swift; sourceTree = "<group>"; };
+		20569A97ABBE984F84668D90 /* WokintoshAgentWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WokintoshAgentWidget.entitlements; sourceTree = "<group>"; };
 		306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRepositoryTests.swift; sourceTree = "<group>"; };
+		35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWidgetTests.swift; sourceTree = "<group>"; };
 		4193D399610A9078D47B9EDC /* PhoneCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneCredentials.swift; sourceTree = "<group>"; };
 		4C45606B4DB668BD0E8A1E86 /* WokintoshPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WokintoshPhoneApp.swift; sourceTree = "<group>"; };
 		4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneScannerView.swift; sourceTree = "<group>"; };
 		5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = WokintoshPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		62F5A1B7E1A1091C0D2D935B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		64E84B7D32B3715D7AAC142C /* wokintosh */ = {isa = PBXFileReference; lastKnownFileType = folder; name = wokintosh; path = ..; sourceTree = SOURCE_ROOT; };
+		8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetModels.swift; sourceTree = "<group>"; };
+		824D00CCFA01E703225A028C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		983CCC8961FB7C6FD56BBFFD /* WokintoshAgentWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WokintoshAgentWidget.swift; sourceTree = "<group>"; };
 		AA6DB780B0DE146F62B7502F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B902F4DF4BFEEECAF746AD59 /* PhoneAgentRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneAgentRowView.swift; sourceTree = "<group>"; };
+		C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWidgetView.swift; sourceTree = "<group>"; };
 		C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WokintoshPhoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C93AA0D4A44449D0F78792F8 /* WokintoshAgentWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WokintoshAgentWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE73DA4ABA3062F446828C56 /* PublishedWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishedWidgetIntent.swift; sourceTree = "<group>"; };
 		F31018E93358078734C1300A /* PhoneFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFixtures.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		57FAE840B8F088E3B510A714 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				398A3D61C17562A3CF7A8CF2 /* WokintoshCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		92F8A2CBE9B8ACE70D14FEAD /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -63,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				306EF34104303E5B8BD0AF1F /* PhoneRepositoryTests.swift */,
+				35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -83,6 +137,7 @@
 				67F9548F38A7A737FDD7C7CE /* Packages */,
 				9A79C60F1ADADE1922C5916D /* Shared */,
 				37CE175FC322EE3382CA90B3 /* Tests */,
+				AFFAC76EDA1204E4463AED80 /* Widget */,
 				F89286D74B15707E436E5005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,9 +164,23 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		AFFAC76EDA1204E4463AED80 /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				C73AE53BFB336DA0BAF1D67B /* AgentWidgetView.swift */,
+				824D00CCFA01E703225A028C /* Info.plist */,
+				CE73DA4ABA3062F446828C56 /* PublishedWidgetIntent.swift */,
+				8107BD1A944D9FE9B9A05FA8 /* WidgetModels.swift */,
+				20569A97ABBE984F84668D90 /* WokintoshAgentWidget.entitlements */,
+				983CCC8961FB7C6FD56BBFFD /* WokintoshAgentWidget.swift */,
+			);
+			path = Widget;
+			sourceTree = "<group>";
+		};
 		F89286D74B15707E436E5005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				C93AA0D4A44449D0F78792F8 /* WokintoshAgentWidget.appex */,
 				5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */,
 				C8E4E4D8D1416C457A442559 /* WokintoshPhoneTests.xctest */,
 			);
@@ -147,10 +216,12 @@
 				027CE60AF1E1EAC492F5E159 /* Sources */,
 				5532DBB6DAC692E856862DD7 /* Resources */,
 				92F8A2CBE9B8ACE70D14FEAD /* Frameworks */,
+				76AA11A0FFF8C04F2E14E21B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2E82A2158F1CC535036220D9 /* PBXTargetDependency */,
 			);
 			name = WokintoshPhone;
 			packageProductDependencies = (
@@ -159,6 +230,25 @@
 			productName = WokintoshPhone;
 			productReference = 5F23FB57CB9C21CA0598DA61 /* WokintoshPhone.app */;
 			productType = "com.apple.product-type.application";
+		};
+		8F98B15BCFE8462D35EF4E93 /* WokintoshAgentWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8C7AB831B97BE17B1B0CA4C8 /* Build configuration list for PBXNativeTarget "WokintoshAgentWidget" */;
+			buildPhases = (
+				593FD90EB3433B00E30528B8 /* Sources */,
+				57FAE840B8F088E3B510A714 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WokintoshAgentWidget;
+			packageProductDependencies = (
+				D14623963FB5621E522FF987 /* WokintoshCore */,
+			);
+			productName = WokintoshAgentWidget;
+			productReference = C93AA0D4A44449D0F78792F8 /* WokintoshAgentWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -174,6 +264,10 @@
 						ProvisioningStyle = Automatic;
 					};
 					64C482032F39E620E8F8563B = {
+						DevelopmentTeam = YOUR_TEAM_ID;
+						ProvisioningStyle = Automatic;
+					};
+					8F98B15BCFE8462D35EF4E93 = {
 						DevelopmentTeam = YOUR_TEAM_ID;
 						ProvisioningStyle = Automatic;
 					};
@@ -197,6 +291,7 @@
 			projectRoot = "";
 			targets = (
 				64C482032F39E620E8F8563B /* WokintoshPhone */,
+				8F98B15BCFE8462D35EF4E93 /* WokintoshAgentWidget */,
 				4D51A56910F774E12291522B /* WokintoshPhoneTests */,
 			);
 		};
@@ -227,21 +322,65 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		593FD90EB3433B00E30528B8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0B354E046569C3B6DD95472 /* AgentWidgetView.swift in Sources */,
+				EA54FB23392F3388B4B1C38F /* PhoneAgentRowView.swift in Sources */,
+				47CEBEF62BF45D63D3EED71A /* PhoneCredentials.swift in Sources */,
+				3F4CE88C15B6693AE611AC52 /* PhoneFixtures.swift in Sources */,
+				491705590F5D1DF9DF632DCF /* PhoneRepository.swift in Sources */,
+				FFAA5D8583D2E79743A7A43E /* PublishedWidgetIntent.swift in Sources */,
+				BDF69639EFD7AD5E81CED348 /* WidgetModels.swift in Sources */,
+				EBDE51E4411377BD98E1A352 /* WokintoshAgentWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B91047B7EC8F53A8FBCD5947 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5C43FECB2FB516AF5299041F /* AgentWidgetView.swift in Sources */,
 				FAF650097388BCF0FE6B9409 /* PhoneAgentRowView.swift in Sources */,
 				5E45F813DD856C36A637EEB6 /* PhoneCredentials.swift in Sources */,
 				A03100546B54559744776EC7 /* PhoneFixtures.swift in Sources */,
 				BAE83C00CF25615DFCD76CAF /* PhoneRepository.swift in Sources */,
 				C88F4D7F6CB859E9C36714E3 /* PhoneRepositoryTests.swift in Sources */,
+				2D760AFB02D7BB7A08DC2063 /* PhoneWidgetTests.swift in Sources */,
+				EBCCE16C36405DCECD46DAF7 /* WidgetModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		2E82A2158F1CC535036220D9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8F98B15BCFE8462D35EF4E93 /* WokintoshAgentWidget */;
+			targetProxy = 1BD94F52DAAA6BCE1F89A79F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		47F606052112132DB883AF0C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/WokintoshAgentWidget.entitlements;
+				INFOPLIST_FILE = Widget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.agents;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		6E6D47349923F84E1687523F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -270,6 +409,24 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.tests;
 				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9D700A74045ACA9B4D01343F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/WokintoshAgentWidget.entitlements;
+				INFOPLIST_FILE = Widget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.wokintosh.phone.agents;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -444,6 +601,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8C7AB831B97BE17B1B0CA4C8 /* Build configuration list for PBXNativeTarget "WokintoshAgentWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9D700A74045ACA9B4D01343F /* Debug */,
+				47F606052112132DB883AF0C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		9E5205D8E1E62FC15A99E6E8 /* Build configuration list for PBXNativeTarget "WokintoshPhone" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -486,6 +652,10 @@
 			productName = WokintoshCore;
 		};
 		7124D10F766FC4AA80DFAC42 /* WokintoshCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WokintoshCore;
+		};
+		D14623963FB5621E522FF987 /* WokintoshCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WokintoshCore;
 		};

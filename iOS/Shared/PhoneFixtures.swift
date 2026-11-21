@@ -1,14 +1,16 @@
-#if DEBUG
 import Foundation
 import WokintoshCore
 
+#if DEBUG
 private final class PreviewPhoneCredentials:PhoneCredentialStore,@unchecked Sendable {
     var pairing:PhonePairing?
     func load()throws->PhonePairing? {pairing}
     func save(_ value:PhonePairing)throws {pairing=value}
     func remove()throws {pairing=nil}
 }
+#endif
 enum PhoneFixtures {
+    #if DEBUG
     static func repository()throws->PhoneRepository {
         let cache=PhoneSnapshotCache(directory:FileManager.default.temporaryDirectory.appendingPathComponent("wokintosh-sample-data"))
         let credentials=PreviewPhoneCredentials()
@@ -16,6 +18,7 @@ enum PhoneFixtures {
         try cache.store(feed(),fetchedAt:Date())
         return PhoneRepository(cache:cache,credentials:credentials,client:PhoneFeedClient())
     }
+    #endif
     static func feed(at now:Date=Date())->PublishedWidgetFeed {
         let values:[(String,String,String,AgentState)]=[("Review database migration","Build Mac","codex",.needsAttention),("Polish the dashboard","Devbox","claude",.working),("Fix weather layout","Build Mac","codex",.finished),("Improve project search","Devbox","claude",.working),("Update documentation","Build Mac","codex",.working)]
         let rows=values.enumerated().map {index,value -> SessionRow in
@@ -27,4 +30,3 @@ enum PhoneFixtures {
                                    widgets:[PublishedWidget(id:UUID(uuidString:"00000000-0000-0000-0000-000000000002")!,name:"Agents",agents:agents)])
     }
 }
-#endif

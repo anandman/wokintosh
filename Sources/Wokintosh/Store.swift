@@ -346,7 +346,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
                     if let previous=observations[snapshot.host.id],previous>snapshot.generatedAt {continue}
                     observations[snapshot.host.id]=snapshot.generatedAt
                 }
-                let agents=PublishedAgents.make(rows:rows(for:widget),sourceObservations:observations,interval:widget.doneCollapseInterval,showFinished:widget.showFinished,at:now)
+                let offline:Int
+                if let host=widget.hostID {offline=feeds.values.contains{$0.snapshot?.host.id==host && $0.connected} ? 0 : 1}
+                else {offline=feeds.values.filter{!$0.connected}.count}
+                let agents=PublishedAgents.make(rows:rows(for:widget),sourceObservations:observations,interval:widget.doneCollapseInterval,showFinished:widget.showFinished,offlineSourceCount:offline,at:now)
                 return PublishedWidget(id:widget.id,name:widgetSettingsName(widget,in:document.widgets),agents:agents)
             }
             try publisher.publish(payloads,publisherName:feeds["local"]?.displayName ?? "Wokintosh",preview:document.previewMode,at:now)

@@ -4,6 +4,7 @@ import WokintoshCore
 struct PhoneAgentRowView:View {
     let row:PublishedAgentRow
     var offline=false
+    var showFreshness=true
     let at:Date
     var body:some View {
         HStack(alignment:.top,spacing:8) {
@@ -17,7 +18,7 @@ struct PhoneAgentRowView:View {
                 }
                 Text(row.hostName+" · "+(row.session.project.isEmpty ? "No project" : row.session.project))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if offline || row.freshness(at:at) != .current {
+                if showFreshness && (offline || row.freshness(at:at) != .current) {
                     Text(row.freshness(at:at) == .offline ? "Source offline · last known state" : "Saved snapshot · last known state")
                         .font(.caption2).foregroundStyle(.orange).lineLimit(1)
                 }
