@@ -13,6 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("Connections", systemImage: "link") }.tag(SettingsTab.connections)
             MachinesSettingsView(store: store)
                 .tabItem { Label("Machines", systemImage: "desktopcomputer") }.tag(SettingsTab.machines)
+            PublisherSettingsView(store:store,publisher:store.publisher)
+                .tabItem {Label("iPhone",systemImage:"iphone")}.tag(SettingsTab.phone)
             DisplaySettingsView(store: store)
                 .tabItem { Label("Display", systemImage: "display") }.tag(SettingsTab.display)
             UpdateSettingsView(updates: store.updates)

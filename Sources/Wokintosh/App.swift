@@ -315,5 +315,5 @@ import SwiftUI
     func windowWillClose(_ notification:Notification) {
         if notification.object as? NSWindow === dashboard {suspendPresentation(remember:false)}
     }
-    func applicationWillTerminate(_ notification:Notification) {store.saveNow()}
+    func applicationWillTerminate(_ notification:Notification) {store.publisher.shutdown();store.saveNow()}
 }

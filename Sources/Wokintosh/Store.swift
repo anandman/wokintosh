@@ -7,13 +7,13 @@ import WokintoshMacTransport
 typealias DashboardWidget = WokintoshCore.Widget
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case widgets, connections, machines, display, updates
+    case widgets, connections, machines, phone, display, updates
     var id:String { rawValue }
-    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .display:return "Display";case .updates:return "Updates" } }
+    var title:String { switch self { case .widgets:return "Dashboard";case .connections:return "Connections";case .machines:return "Machines";case .phone:return "iPhone";case .display:return "Display";case .updates:return "Updates" } }
 }
 
 @MainActor final class DashboardStore: ObservableObject {
-    @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave();scheduleSourcePublication() } }
+    @Published var document: DashboardDocument { didSet { native.updateWidgets(document.widgets);scheduleSave();scheduleSourcePublication();scheduleWidgetPublication() } }
     @Published var settingsTab=SettingsTab.widgets
     @Published private var reviewedPreviewIDs=Set<String>()
     @Published private var blockedPreviewIDs=Set<String>()
@@ -25,6 +25,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var lastSaveError: String?
     let native:NativeSources
     let sharing:SourceSharing
+    let publisher:WidgetPublisher
     let updates = UpdateController()
     let dataDirectory: URL
     private var layoutNeedsBackup=false
@@ -32,6 +33,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private var pollTask: Task<Void, Never>?
     private var nativeSubscription: AnyCancellable?
     private var sourcePublishTask:Task<Void,Never>?
+    private var widgetPublishTask:Task<Void,Never>?
     private let localPython = LocalPythonDiscovery()
     private let actionExecutor:WidgetActionExecutor
     private var actionInFlight=Set<UUID>()
@@ -39,7 +41,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
 
-    init(actionExecutor:WidgetActionExecutor?=nil,dataDirectory injectedDirectory:URL?=nil,nativeSources:NativeSources?=nil) {
+    init(actionExecutor:WidgetActionExecutor?=nil,dataDirectory injectedDirectory:URL?=nil,nativeSources:NativeSources?=nil,publisher injectedPublisher:WidgetPublisher?=nil) {
         native=nativeSources ?? NativeSources()
         self.actionExecutor=actionExecutor ?? WidgetActionExecutor()
         let arguments = ProcessInfo.processInfo.arguments
@@ -51,6 +53,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             dataDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Wokintosh", isDirectory: true)
         }
         sharing=SourceSharing(directory:dataDirectory)
+        publisher=injectedPublisher ?? WidgetPublisher(directory:dataDirectory)
         let file = dataDirectory.appendingPathComponent("layout.json")
         var loaded=DashboardDocument.defaultLayout
         var loadNotice:String?
@@ -108,6 +111,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     /// Persist before publishing so a failed import cannot replace the visible dashboard.
     @discardableResult func applySetup(_ setup:DashboardSetup,machineMapping:[String:String]=[:]) throws -> URL {
         let imported=try setup.applying(to:document,machineMapping:machineMapping)
+        // A setup replaces the layout. Matching UUIDs must not grant publication
+        // consent to imported content; revoke before the first persistence attempt.
+        try publisher.removeSelections(for:Set(document.widgets.map(\.id)))
         saveTask?.cancel();saveTask=nil
         do {
             if layoutNeedsBackup {
@@ -321,6 +327,31 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         try? sharing.publish(music:native.music,musicAvailable:native.musicEnabled && native.musicConnected && native.musicConnectionKnown,
                              calendar:native.calendar,calendarReady:calendarGranted && native.calendarDataState == .ready,preview:document.previewMode)
     }
+    private func scheduleWidgetPublication() {
+        widgetPublishTask?.cancel()
+        widgetPublishTask=Task { [weak self] in
+            try? await Task.sleep(for:.milliseconds(25))
+            guard !Task.isCancelled else {return}
+            self?.publishWidgets()
+        }
+    }
+    func publishWidgets(at now:Date=Date()) {
+        let existing=Set(document.widgets.filter{$0.kind == .agents}.map(\.id))
+        do {
+            try publisher.removeSelections(for:publisher.options.selectedWidgetIDs.subtracting(existing))
+            let payloads=document.widgets.filter{$0.kind == .agents && publisher.options.selectedWidgetIDs.contains($0.id)}.map {widget in
+                var observations:[String:Date]=[:]
+                for feed in feeds.values {
+                    guard let snapshot=feed.snapshot,widget.hostID==nil || widget.hostID==snapshot.host.id else {continue}
+                    if let previous=observations[snapshot.host.id],previous>snapshot.generatedAt {continue}
+                    observations[snapshot.host.id]=snapshot.generatedAt
+                }
+                let agents=PublishedAgents.make(rows:rows(for:widget),sourceObservations:observations,interval:widget.doneCollapseInterval,showFinished:widget.showFinished,at:now)
+                return PublishedWidget(id:widget.id,name:widgetSettingsName(widget,in:document.widgets),agents:agents)
+            }
+            try publisher.publish(payloads,publisherName:feeds["local"]?.displayName ?? "Wokintosh",preview:document.previewMode,at:now)
+        } catch { /* The publisher presents its own error state; never interrupt the dashboard poll. */ }
+    }
     func system(for widget: Widget) -> (String, SystemReading, Bool) {
         if document.previewMode { return ("Build Mac", SystemReading(cpuPercent: 18, memoryUsedBytes: 12*1024*1024*1024, memoryTotalBytes: 24*1024*1024*1024, diskFreeBytes: 241*1024*1024*1024, diskTotalBytes: 512*1024*1024*1024, drives:[DriveReading(id:"/",name:"Macintosh HD",mountPoint:"/",freeBytes:241*1024*1024*1024,totalBytes:512*1024*1024*1024),DriveReading(id:"/Volumes/Archive",name:"Archive",mountPoint:"/Volumes/Archive",freeBytes:700*1024*1024*1024,totalBytes:2*1024*1024*1024*1024)]), true) }
         return SystemPresentation.resolve(hostID: widget.hostID, feeds: feeds)
@@ -347,6 +378,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             await native.refresh(document:document,sharing:sharing.options,localHostID:feeds["local"]?.snapshot?.host.id)
             publishSharedSources()
         }
+        publishWidgets()
     }
     private func refreshFeeds() async {
         struct Request: Sendable { var id: String; var name: String; var executable: String; var arguments: [String] }
