@@ -27,7 +27,19 @@ public final class PhoneFeedClient:@unchecked Sendable {
         request.setValue("Bearer "+pairing.token,forHTTPHeaderField:"Authorization")
         request.setValue("application/json",forHTTPHeaderField:"Accept")
         request.setValue("no-store",forHTTPHeaderField:"Cache-Control")
-        let operation=PhoneFetchOperation()
+        return try await send(request,command:false)
+    }
+    public func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {
+        var request=URLRequest(url:pairing.endpointURL.deletingLastPathComponent().appendingPathComponent("agent-actions"))
+        request.httpMethod="POST";request.httpBody=try command.encoded()
+        request.setValue("Bearer "+pairing.token,forHTTPHeaderField:"Authorization")
+        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
+        request.setValue("application/json",forHTTPHeaderField:"Accept")
+        request.setValue("no-store",forHTTPHeaderField:"Cache-Control")
+        return try await send(request,command:true)
+    }
+    private func send(_ request:URLRequest,command:Bool)async throws->PublishedWidgetFeed {
+        let operation=PhoneFetchOperation(command:command)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation {continuation in
                 operation.start(request,configuration:configuration,continuation:continuation)
@@ -39,6 +51,8 @@ public final class PhoneFeedClient:@unchecked Sendable {
 /// Stream into a bounded buffer. URLSession's data(for:) would allocate the whole
 /// response before a size check, and redirects must never forward the access key.
 private final class PhoneFetchOperation:NSObject,URLSessionDataDelegate,@unchecked Sendable {
+    private let command:Bool
+    init(command:Bool) {self.command=command;super.init()}
     private let lock=NSLock()
     private var continuation:CheckedContinuation<PublishedWidgetFeed,Error>?
     private var session:URLSession?
@@ -74,7 +88,9 @@ private final class PhoneFetchOperation:NSObject,URLSessionDataDelegate,@uncheck
         guard let http=response as? HTTPURLResponse else {completionHandler(.cancel);finish(.failure(PhoneFetchError.invalidResponse));return}
         guard http.statusCode==200 else {
             completionHandler(.cancel)
-            finish(.failure([401,403].contains(http.statusCode) ? PhoneFetchError.unauthorized : .unavailable));return
+            if command && [403,405].contains(http.statusCode) {finish(.failure(AgentControlError.disabled))}
+            else if command && http.statusCode==409 {finish(.failure(AgentControlError.conflict))}
+            else {finish(.failure([401,403].contains(http.statusCode) ? PhoneFetchError.unauthorized : .unavailable))};return
         }
         guard response.expectedContentLength<=PublishedWidgetFeed.maximumBytes else {completionHandler(.cancel);finish(.failure(PhoneFetchError.oversized));return}
         completionHandler(.allow)

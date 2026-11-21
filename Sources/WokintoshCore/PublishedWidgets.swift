@@ -20,6 +20,7 @@ public struct PublishedAgentRow:Codable,Equatable,Identifiable,Sendable {
     public let connected:Bool
     public let completionPending:Bool
     public let sourceObservedAt:Date?
+    public var controls:PublishedAgentControls?=nil
     public var id:String {SessionRow(hostID:hostID,hostName:hostName,session:session).id}
     public init(row:SessionRow,observedAt:Date?) {
         hostID=row.hostID;hostName=String(row.hostName.prefix(180))
@@ -36,7 +37,7 @@ public struct PublishedAgentRow:Codable,Equatable,Identifiable,Sendable {
         return .current
     }
     public var isValid:Bool {
-        !hostID.isEmpty && !session.id.isEmpty &&
+        (controls?.isValid ?? true) && !hostID.isEmpty && !session.id.isEmpty &&
         [hostID,hostName,session.id,session.provider,session.title,session.project].allSatisfy{$0.utf8.count<=720 && $0.rangeOfCharacter(from:.controlCharacters)==nil} &&
         !session.project.contains("/") && session.activity==nil
     }
@@ -51,6 +52,9 @@ public struct PublishedAgents:Codable,Equatable,Sendable {
     public let doneCount:Int
     public let sourceObservedAt:Date?
     public var offlineSourceCount:Int?=nil
+    public var earlierRows:[PublishedAgentRow]?=nil
+    public var earlierControls:PublishedAgentControls?=nil
+    public var controls:PublishedAgentControls?=nil
     public var hiddenCount:Int {max(0,totalCount-rows.count)}
     public var asOf:Date? {
         guard !rows.isEmpty else {return sourceObservedAt}
@@ -60,14 +64,16 @@ public struct PublishedAgents:Codable,Equatable,Sendable {
     public static func make(rows:[SessionRow],sourceObservations:[String:Date],interval:DoneCollapseInterval,showFinished:Bool,offlineSourceCount:Int=0,at now:Date)->PublishedAgents {
         let completion=CompletionPresentation.make(rows:rows,interval:interval,at:now)
         let page=completion.page(capacity:128,showFinished:showFinished)
-        return PublishedAgents(rows:page.visible.map{PublishedAgentRow(row:$0,observedAt:sourceObservations[$0.hostID])},
+        var result=PublishedAgents(rows:page.visible.map{PublishedAgentRow(row:$0,observedAt:sourceObservations[$0.hostID])},
                                totalCount:page.visible.count+page.hiddenCount,earlierDoneCount:completion.earlier.count,
                                attentionCount:page.attentionCount,workingCount:page.workingCount,doneCount:page.doneCount,
                                sourceObservedAt:sourceObservations.values.min(),offlineSourceCount:max(0,offlineSourceCount))
+        result.earlierRows=Array(completion.earlier.prefix(max(0,128-result.rows.count))).map{PublishedAgentRow(row:$0,observedAt:sourceObservations[$0.hostID])}
+        return result
     }
     public var isValid:Bool {
         let counts=[totalCount,earlierDoneCount,attentionCount,workingCount,doneCount]
-        return (offlineSourceCount ?? 0)>=0 && (offlineSourceCount ?? 0)<=10000 && rows.count<=128 && rows.allSatisfy(\.isValid) && Set(rows.map(\.id)).count==rows.count &&
+        return (controls?.isValid ?? true) && (earlierControls?.isValid ?? true) && (earlierRows?.allSatisfy(\.isValid) ?? true) && rows.count+(earlierRows?.count ?? 0)<=128 && (earlierRows?.count ?? 0)<=earlierDoneCount && Set((rows+(earlierRows ?? [])).map(\.id)).count==rows.count+(earlierRows?.count ?? 0) && (offlineSourceCount ?? 0)>=0 && (offlineSourceCount ?? 0)<=10000 && rows.count<=128 && rows.allSatisfy(\.isValid) && Set(rows.map(\.id)).count==rows.count &&
         counts.allSatisfy{$0>=0 && $0<=1_000_000} && totalCount>=rows.count && attentionCount<=totalCount && workingCount<=totalCount
     }
 }

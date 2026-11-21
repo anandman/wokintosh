@@ -34,6 +34,18 @@ final class PhoneFeedClientTests:XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField:"Authorization"),"Bearer "+String(repeating:"A",count:43))
         XCTAssertNil(request.url?.query)
     }
+    func testAgentCommandUsesPrivatePostAndConflictIsNotPairingRevocation()async throws {
+        let expected=feed();PhoneFixtureProtocol.status=200;PhoneFixtureProtocol.bytes=try expected.encoded()
+        let command=AgentControlCommand(publisherID:expected.publisherID,widgetID:UUID(),rowID:"host:codex:fixture",action:.reviewDone,revision:String(repeating:"a",count:64))
+        _=try await client().perform(command,pairing:pairing())
+        XCTAssertEqual(PhoneFixtureProtocol.lastRequest?.httpMethod,"POST")
+        XCTAssertEqual(PhoneFixtureProtocol.lastRequest?.url?.path,"/wokintosh/v1/agent-actions")
+        for status in [403,409] {
+            PhoneFixtureProtocol.status=status
+            do {_=try await client().perform(command,pairing:pairing());XCTFail("Expected rejection")}
+            catch {XCTAssertEqual(error as? AgentControlError,status==409 ? .conflict : .disabled)}
+        }
+    }
     func testAuthorizationFailureIsDistinctFromTemporaryServerFailure() async throws {
         for status in [401,403,503,302] {
             PhoneFixtureProtocol.status=status;PhoneFixtureProtocol.bytes=Data()

@@ -1,37 +1,80 @@
 import Foundation
+@preconcurrency import Dispatch
 @preconcurrency import Network
 import WokintoshCore
 
-enum PublisherHTTPResponse {
-    static func make(request:Data,token:String,body:Data?)->Data {
-        func answer(_ code:Int,_ message:String,head:Bool=false,payload:Data?=nil)->Data {
-            let content=payload ?? Data(("{\"error\":\""+message+"\"}").utf8)
-            let header="HTTP/1.1 \(code) \(message)\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: \(content.count)\r\n\r\n"
-            return Data(header.utf8)+(head ? Data() : content)
+struct PublisherHTTPError:Error {let status:Int;let message:String}
+struct PublisherHTTPRequest:Sendable {
+    let method:String
+    let path:String
+    let headers:[String:String]
+    let body:Data
+    static func parse(_ bytes:Data)throws->Self? {
+        guard let boundary=bytes.range(of:Data("\r\n\r\n".utf8)) else {
+            if bytes.count>16384 {throw PublisherHTTPError(status:431,message:"Headers Too Large")};return nil
         }
-        guard request.count<=16384 else {return answer(431,"Headers Too Large")}
-        guard let text=String(data:request,encoding:.ascii),text.hasSuffix("\r\n\r\n") else {return answer(400,"Bad Request")}
-        let lines=text.components(separatedBy:"\r\n")
-        let first=(lines.first ?? "").split(separator:" ",omittingEmptySubsequences:false)
-        guard first.count==3,["HTTP/1.1","HTTP/1.0"].contains(String(first[2])) else {return answer(400,"Bad Request")}
-        let head=first[0]=="HEAD"
-        guard first[0]=="GET" || head else {return answer(405,"Method Not Allowed")}
+        guard boundary.upperBound<=16384 else {throw PublisherHTTPError(status:431,message:"Headers Too Large")}
+        guard let text=String(data:bytes[..<boundary.lowerBound],encoding:.ascii) else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        let lines=text.components(separatedBy:"\r\n"),first=(lines.first ?? "").split(separator:" ",omittingEmptySubsequences:false)
+        guard first.count==3,["HTTP/1.1","HTTP/1.0"].contains(String(first[2])) else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        let method=String(first[0]),path=String(first[1])
+        guard ["GET","HEAD","POST"].contains(method) else {throw PublisherHTTPError(status:405,message:"Method Not Allowed")}
         var headers:[String:String]=[:]
-        for line in lines.dropFirst() where !line.isEmpty {
-            guard let colon=line.firstIndex(of:":") else {return answer(400,"Bad Request",head:head)}
+        for line in lines.dropFirst() {
+            guard let colon=line.firstIndex(of:":") else {throw PublisherHTTPError(status:400,message:"Bad Request")}
             let name=String(line[..<colon]).lowercased()
-            guard name.range(of:"^[a-z0-9-]+$",options:.regularExpression) != nil,headers[name]==nil else {return answer(400,"Bad Request",head:head)}
+            guard name.range(of:"^[a-z0-9-]+$",options:.regularExpression) != nil,headers[name]==nil else {throw PublisherHTTPError(status:400,message:"Bad Request")}
             headers[name]=String(line[line.index(after:colon)...]).trimmingCharacters(in:.whitespaces)
         }
-        guard headers["transfer-encoding"]==nil,headers["content-length"]==nil || headers["content-length"]=="0" else {return answer(400,"Bad Request",head:head)}
-        let supplied=headers["authorization"] ?? ""
-        guard supplied.prefix(7).lowercased()=="bearer ",sameToken(String(supplied.dropFirst(7)),token) else {return answer(401,"Unauthorized",head:head)}
-        guard ["/v1/widgets","/wokintosh/v1/widgets"].contains(String(first[1])) else {return answer(404,"Not Found",head:head)}
-        guard let body,body.count<=PublishedWidgetFeed.maximumBytes else {return answer(503,"Unavailable",head:head)}
-        return answer(200,"OK",head:head,payload:body)
+        guard headers["transfer-encoding"]==nil else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        var length=0
+        if let value=headers["content-length"] {
+            guard value.range(of:"^(0|[1-9][0-9]{0,4})$",options:.regularExpression) != nil,let count=Int(value),count<=16384 else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+            length=count
+        }
+        if method=="POST" {
+            guard ["/v1/agent-actions","/wokintosh/v1/agent-actions"].contains(path) else {throw PublisherHTTPError(status:405,message:"Method Not Allowed")}
+            guard length>0,headers["content-type"]?.lowercased()=="application/json" else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        } else if length != 0 {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        let body=Data(bytes[boundary.upperBound...])
+        guard body.count<=length else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        if body.count<length {return nil}
+        return Self(method:method,path:path,headers:headers,body:body)
     }
-    private static func sameToken(_ supplied:String,_ expected:String)->Bool {
-        let a=Array(supplied.utf8),b=Array(expected.utf8)
+}
+struct PublisherHTTPResult:Sendable {
+    let status:Int
+    let message:String
+    var body:Data?=nil
+    var data:Data {PublisherHTTPResponse.answer(status,message,payload:body)}
+}
+enum PublisherHTTPResponse {
+    static func answer(_ code:Int,_ message:String,head:Bool=false,payload:Data?=nil)->Data {
+        let content=payload ?? Data(("{\"error\":\""+message+"\"}").utf8)
+        let header="HTTP/1.1 \(code) \(message)\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\nContent-Length: \(content.count)\r\n\r\n"
+        return Data(header.utf8)+(head ? Data() : content)
+    }
+    static func make(request:Data,token:String,body:Data?)->Data {
+        do {
+            guard let parsed=try PublisherHTTPRequest.parse(request) else {return answer(400,"Bad Request")}
+            guard parsed.method != "POST" else {return answer(405,"Method Not Allowed")}
+            let head=parsed.method=="HEAD"
+            guard authorized(parsed,token:token) else {return answer(401,"Unauthorized",head:head)}
+            guard ["/v1/widgets","/wokintosh/v1/widgets"].contains(parsed.path) else {return answer(404,"Not Found",head:head)}
+            guard let body,body.count<=PublishedWidgetFeed.maximumBytes else {return answer(503,"Unavailable",head:head)}
+            return answer(200,"OK",head:head,payload:body)
+        } catch let e as PublisherHTTPError {return answer(e.status,e.message)}
+        catch {return answer(400,"Bad Request")}
+    }
+    static func command(request:Data,token:String)throws->AgentControlCommand {
+        guard let parsed=try PublisherHTTPRequest.parse(request),parsed.method=="POST" else {throw PublisherHTTPError(status:400,message:"Bad Request")}
+        guard authorized(parsed,token:token) else {throw PublisherHTTPError(status:401,message:"Unauthorized")}
+        do {return try AgentControlCommand.decode(parsed.body)} catch {throw PublisherHTTPError(status:400,message:"Bad Request")}
+    }
+    private static func authorized(_ parsed:PublisherHTTPRequest,token:String)->Bool {
+        let supplied=parsed.headers["authorization"] ?? ""
+        guard supplied.prefix(7).lowercased()=="bearer " else {return false}
+        let a=Array(supplied.dropFirst(7).utf8),b=Array(token.utf8)
         var difference=a.count ^ b.count
         for i in 0..<max(a.count,b.count) {difference |= Int((i<a.count ? a[i] : 0) ^ (i<b.count ? b[i] : 0))}
         return !b.isEmpty && difference==0
@@ -39,7 +82,7 @@ enum PublisherHTTPResponse {
 }
 
 /// The only listening socket is IPv4 loopback; Tailscale Serve terminates private
-/// HTTPS separately. No filesystem paths, shell commands or mutations are served.
+/// HTTPS separately. Commands are limited to receipt-checked Agent bookkeeping.
 final class PublisherServer:@unchecked Sendable {
     private let listener:NWListener
     private let queue=DispatchQueue(label:"dev.wokintosh.publisher")
@@ -48,6 +91,7 @@ final class PublisherServer:@unchecked Sendable {
     private var body:Data?
     private var connections:[ObjectIdentifier:NWConnection]=[:]
     private var reportedReady=false
+    var onCommand:(@Sendable(AgentControlCommand)async->PublisherHTTPResult)?
     var onReady:(@Sendable(UInt16?)->Void)?
     var onStatus:(@Sendable(String)->Void)?
     init(token:String,body:Data?,port:UInt16=8787)throws {
@@ -87,19 +131,34 @@ final class PublisherServer:@unchecked Sendable {
         }
         listener.start(queue:queue)
     }
+    private func send(_ response:Data,to connection:NWConnection,timeout:DispatchWorkItem) {
+        connection.send(content:response,completion:.contentProcessed { [weak self] _ in
+            timeout.cancel();connection.cancel();self?.connections.removeValue(forKey:ObjectIdentifier(connection))
+        })
+    }
     private func receive(_ connection:NWConnection,buffer:Data,timeout:DispatchWorkItem) {
-        connection.receive(minimumIncompleteLength:1,maximumLength:16385-buffer.count) { [weak self] data,_,finished,error in
+        connection.receive(minimumIncompleteLength:1,maximumLength:max(1,32769-buffer.count)) { [weak self] data,_,finished,error in
             guard let self else {connection.cancel();return}
             let buffer=buffer+(data ?? Data())
-            if buffer.count>16384 || buffer.range(of:Data("\r\n\r\n".utf8)) != nil {
-                self.lock.lock();let body=self.body;self.lock.unlock()
-                let response=PublisherHTTPResponse.make(request:buffer,token:self.token,body:body)
-                connection.send(content:response,completion:.contentProcessed { [weak self] _ in
-                    timeout.cancel();connection.cancel();self?.connections.removeValue(forKey:ObjectIdentifier(connection))
-                })
-            } else if finished || error != nil {
-                timeout.cancel();connection.cancel();self.connections.removeValue(forKey:ObjectIdentifier(connection))
-            } else {self.receive(connection,buffer:buffer,timeout:timeout)}
+            do {
+                guard buffer.count<=32768 else {throw PublisherHTTPError(status:413,message:"Request Too Large")}
+                if let parsed=try PublisherHTTPRequest.parse(buffer) {
+                    if parsed.method=="POST" {
+                        let command=try PublisherHTTPResponse.command(request:buffer,token:self.token)
+                        let callback=self.onCommand
+                        Task {
+                            let result=await callback?(command) ?? PublisherHTTPResult(status:403,message:"Controls Disabled")
+                            self.queue.async {self.send(result.data,to:connection,timeout:timeout)}
+                        }
+                    } else {
+                        self.lock.lock();let body=self.body;self.lock.unlock()
+                        self.send(PublisherHTTPResponse.make(request:buffer,token:self.token,body:body),to:connection,timeout:timeout)
+                    }
+                } else if finished || error != nil {
+                    self.send(PublisherHTTPResponse.answer(400,"Bad Request"),to:connection,timeout:timeout)
+                } else {self.receive(connection,buffer:buffer,timeout:timeout)}
+            } catch let e as PublisherHTTPError {self.send(PublisherHTTPResponse.answer(e.status,e.message),to:connection,timeout:timeout)}
+            catch {self.send(PublisherHTTPResponse.answer(400,"Bad Request"),to:connection,timeout:timeout)}
         }
     }
     func stop() {

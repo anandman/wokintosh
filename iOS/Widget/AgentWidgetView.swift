@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import AppIntents
 import WokintoshCore
 
 /// WidgetKit supplies different content heights on iPad, iPhone and with larger text.
@@ -34,12 +35,14 @@ private struct AgentWidgetCandidateView:View {
             VStack(alignment:.leading,spacing:4) {
                 if showHeader {
                     HStack(alignment:.firstTextBaseline) {
-                        Text(widget.name).font(.subheadline.bold()).lineLimit(1)
+                        PhoneStripes()
+                        Text(widget.name).font(PhonePalette.font(14,bold:true,relativeTo:.subheadline)).lineLimit(1)
+                        PhoneStripes()
                         Spacer(minLength:4)
                         if presentation.attentionCount>0 {Text("\(presentation.attentionCount) need you").font(.caption.weight(.semibold)).foregroundStyle(.orange)}
                         else if entry.sample {Text("SAMPLE").font(.caption2.bold()).foregroundStyle(.secondary)}
-                    }
-                    Divider()
+                    }.background(PhonePalette.widgetChrome)
+                    Rectangle().fill(.primary.opacity(0.6)).frame(height:1)
                 }
                 if presentation.rows.isEmpty {
                     Text(agents.totalCount>0 ? "Open session list" : (presentation.offline ? "Source unavailable" : (presentation.stale ? "Waiting for fresh data" : "No active sessions")))
@@ -65,10 +68,13 @@ private struct AgentWidgetCandidateView:View {
                     }
                     Spacer(minLength:0)
                 }
+                if entry.actionMessage != nil {
+                    Text("Action not confirmed · open Wokintosh").font(.caption2).foregroundStyle(PhonePalette.widgetAttention).lineLimit(1)
+                }
                 HStack(spacing:5) {
                     Text(asOf(presentation)).lineLimit(1).layoutPriority(1)
                     Spacer(minLength:0)
-                    if presentation.earlierDoneCount>0 {Text("Done · \(presentation.earlierDoneCount) unread").lineLimit(1)}
+                    if presentation.earlierDoneCount>0 {Link("Done · \(presentation.earlierDoneCount) unread",destination:PhoneWidgetRoute(publisherID:publisherID,widgetID:widget.id).url).lineLimit(1)}
                     if presentation.hiddenCount>0 {Text("+\(presentation.hiddenCount)").accessibilityLabel("\(presentation.hiddenCount) more sessions")}
                 }.font(.caption2).foregroundStyle(presentation.offline || presentation.stale ? .orange : .secondary)
             }.privacySensitive()
@@ -82,10 +88,21 @@ private struct AgentWidgetCandidateView:View {
         }
     }
     private func sessionLink(_ row:PublishedAgentRow,publisherID:UUID,widgetID:UUID)->some View {
-        Link(destination:PhoneRoute(publisherID:publisherID,widgetID:widgetID,rowID:row.id).url) {
-            PhoneAgentRowView(row:row,offline:entry.connection == .offline,showFreshness:false,at:entry.date)
-                .frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
-        }.buttonStyle(.plain)
+        HStack(spacing:2) {
+            Link(destination:PhoneRoute(publisherID:publisherID,widgetID:widgetID,rowID:row.id).url) {
+                PhoneAgentRowView(row:row,offline:entry.connection == .offline,showFreshness:false,at:entry.date)
+                    .frame(maxWidth:.infinity,alignment:.leading).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            if let controls=row.controls,controls.allowed.contains(.reviewDone),
+               let data=try? AgentControlCommand(publisherID:publisherID,widgetID:widgetID,rowID:row.id,action:.reviewDone,revision:controls.revision).encoded(),
+               let receipt=String(data:data,encoding:.utf8) {
+                Button(intent:PerformAgentControlIntent(receipt:receipt)) {
+                    Image(systemName:"checkmark.circle")
+                        .font(.system(size:20)).foregroundStyle(PhonePalette.widgetPurple)
+                        .frame(width:44,height:44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Review Done: \(row.session.title)").invalidatableContent()
+            }
+        }.frame(maxWidth:.infinity,alignment:.leading)
     }
     private func asOf(_ p:PhoneWidgetPresentation)->String {
         let prefix=p.offline ? "Offline · " : (p.stale ? "Stale · " : "")
@@ -98,9 +115,14 @@ private struct AgentWidgetCandidateView:View {
 struct AgentWidgetEntryView:View {
     let entry:AgentWidgetEntry
     @Environment(\.widgetFamily) private var family
+    private var dashboardURL:URL {
+        guard let publisher=entry.publisherID,let widget=entry.widget else {return URL(string:"wokintosh://dashboard")!}
+        return PhoneWidgetRoute(publisherID:publisher,widgetID:widget.id,section:.agents).url
+    }
     var body:some View {
         AgentWidgetContentView(entry:entry,family:family)
-            .containerBackground(for:.widget) {Color(uiColor:.systemBackground)}
-            .widgetURL(URL(string:"wokintosh://dashboard")!)
+            .containerBackground(for:.widget) {PhonePalette.widgetPaper}
+            .foregroundStyle(.primary)
+            .widgetURL(dashboardURL)
     }
 }

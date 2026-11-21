@@ -47,6 +47,26 @@ The display Mac and Wokintosh must remain running. The dashboard window can be c
 
 These Home Screen controls follow [Apple's iPad widget instructions](https://support.apple.com/en-ie/guide/ipad/ipadb0de8630/27/ipados/27). For the tall option on iPadOS 27+, swipe right to Today View and use its widget gallery. See Apple's [extra-large](https://developer.apple.com/documentation/widgetkit/widgetfamily/systemextralarge) and [extra-large portrait](https://developer.apple.com/documentation/widgetkit/widgetfamily/systemextralargeportrait) families for platform availability. Compact sizes and larger text may show fewer rows with an overflow count. USB is unnecessary after installation. Keep Tailscale connected and Wokintosh running on the publishing Mac. Refresh timing remains controlled by iPadOS; the widget's **As of** time shows the age of its source data.
 
+## Review and status controls
+
+On your publishing Mac, enable **Settings → iPhone & iPad → Allow Agent controls**. It is off by default. While enabled, anyone with the current pairing key can use these controls for selected published Agent widgets. Existing pairings keep working; the setting and key stay out of setup exports/templates.
+
+The app follows the desktop interactions:
+
+- Tap a session to open its official app immediately.
+- Tap its purple Done checkmark to mark that completion reviewed. New work can produce a new Done notice normally.
+- Tap the header checkmark to review the shown Done notices, including represented Earlier Done. Open **Earlier Done** to review those individually or as a group.
+- Long-press a row for **Mark Blocked** or **Clear Manual Blocked**. A provider-reported blocked goal is cleared in its own app.
+- Tap the Mac icon for **Settings**, including connection, published widget selection, pairing and unpairing.
+
+Reviewing clears the unread notice; a Mac widget configured to include inactive sessions can still show the session. Commands change Wokintosh bookkeeping on the publishing Mac. They do not send prompts, approve actions, stop agents, or alter provider goals.
+
+Widgets use the same provider artwork and a compact striped header, with colors that follow light/dark appearance. Their purple Done checkmark reviews that notice directly. Tap the widget background/header to open its Agent list, then long-press a row for status controls. iOS reserves the widget's long-press menu for its own options. Separate action targets and larger text can reduce visible row counts; overflow remains accurate.
+
+Changes are saved on the publishing Mac and appear on other devices when they refresh. Widget background timing remains controlled by iOS. An old action cannot acknowledge newer work or clear a newer manual annotation. If the Mac is unreachable, the action is not queued; refresh and retry after reconnecting. A stale action reports that the session changed. Nothing is reported as confirmed until the Mac has saved it.
+
+Some historical temporary-looking sessions only have hook events, without saved thread/helper metadata. Wokintosh cannot safely classify every such session as disposable; use Review Done to clear these notices. Untitled sessions or missing links alone are not reasons to hide work.
+
 ## Session links and freshness
 
 Update the collector on each source machine to supply session links. Codex uses its normal thread UUID. Claude needs a Remote Control bridge ID from `CLAUDE_CODE_BRIDGE_SESSION_ID` in observational hook invocations (Claude Code v2.1.199+). Enable/update the observer through the existing Machines setup and review/trust it normally. Wokintosh does not enable Remote Control automatically. After connecting Remote Control, the next hook event can establish the association; a missing bridge ID stays unavailable. PID metadata is not used as a fallback.
@@ -55,6 +75,6 @@ On the initial user's iPhone, both Claude forms opened an exact existing session
 
 Rows route through the Wokintosh app into the official app without an intermediate details sheet. If the link is missing or the OS rejects it, details show the title, machine, project and state, with an explicit backup button when available. The OS accepting a link does not prove the official app resolved the right host/chat.
 
-Widgets request updates about every 15 minutes; iOS controls the schedule and can wait longer. **As of** is based on source observation, not a new HTTP response around old data. Snapshots become stale after 30 minutes and disconnected sources show Offline immediately, including an empty list. Mixed-source widgets also mark affected rows Offline or Stale. Compact widget sizes and larger text use fewer rows with accurate overflow counts; the layout keeps the source time visible. Companion views never review Done, send prompts, approve actions, or control the source session.
+Widgets request updates about every 15 minutes; iOS controls the schedule and can wait longer. **As of** is based on source observation, not a new HTTP response around old data. Snapshots become stale after 30 minutes and disconnected sources show Offline immediately, including an empty list. Mixed-source widgets also mark affected rows Offline or Stale. Compact widget sizes and larger text use fewer rows with accurate overflow counts; the layout keeps the source time visible. Opening a session never reviews Done. Explicit review/manual Blocked controls require the Mac’s separate permission; companion views never send prompts, approve actions, or control the source session.
 
 Publishing consent/credentials stay out of setup exports and templates. Imported/replaced widgets require publication selection again. Stopping publishing prevents new access; a paired device can retain its last snapshot until it refreshes. Change the access key to require pairing again, or **Unpair** in the companion app to clear its credential and saved data.

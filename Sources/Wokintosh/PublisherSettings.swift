@@ -18,6 +18,10 @@ struct PublisherSettingsView:View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             if publisher.options.enabled {
+                Section("Agent controls") {
+                    Toggle("Allow Agent controls",isOn:Binding(get:{publisher.options.allowAgentControls},set:{value in change{$0.allowAgentControls=value}}))
+                    Text("Paired devices can review Done notices and change manual Blocked status on this Mac. While enabled, your pairing code also grants these controls. Provider sessions remain under their own apps.").font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Widgets to publish") {
                     ForEach(store.document.widgets.filter{$0.kind == .agents}) {widget in
                         Toggle(widgetSettingsName(widget,in:store.document.widgets),isOn:Binding(get:{publisher.options.selectedWidgetIDs.contains(widget.id)},set:{enabled in
@@ -46,7 +50,7 @@ struct PublisherSettingsView:View {
                     if showPairing,let pairing=try? publisher.pairing(),let data=try? pairing.encoded(),let image=qr(data) {
                         Image(nsImage:image).interpolation(.none).resizable().frame(width:230,height:230)
                             .padding(12).background(.white).accessibilityLabel("Private Wokintosh device pairing code")
-                        Text("Scan this in Wokintosh on your iPhone or iPad. This code grants read access to your published widgets; keep it private.").font(.caption).foregroundStyle(.secondary)
+                        Text("Scan this in Wokintosh on your iPhone or iPad. This code grants access to published widgets and any enabled Agent controls; keep it private.").font(.caption).foregroundStyle(.secondary)
                     }
                     Button("Change access key") {perform {try publisher.rotateCredential();showPairing=false;store.publishWidgets()}}
                     Text("Changing the key requires pairing your device again. Stopping publishing prevents new access; your device may retain its last snapshot until it refreshes or you unpair it.").font(.caption).foregroundStyle(.secondary)

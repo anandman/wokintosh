@@ -23,6 +23,7 @@ private actor SuspendedPhoneClient:PhoneFetching {
     func fetch(_ pairing:PhonePairing)async throws->PublishedWidgetFeed {
         try await withCheckedThrowingContinuation {continuation in response=continuation;started?.resume();started=nil}
     }
+    func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {try await fetch(pairing)}
     func waitUntilStarted()async {
         if response != nil {return}
         await withCheckedContinuation {started=$0}
@@ -80,6 +81,51 @@ final class PhoneRepositoryTests:XCTestCase {
             XCTAssertEqual(cache.load()?.widgets.count,0)
         }
     }
+    func testActionFailurePreservesSnapshotAndSuccessfulActionUpdatesIt()async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let cache=PhoneSnapshotCache(directory:root),credentials=MemoryPhoneCredentials()
+        let original=PhoneFixtures.feed(),result=PublishedWidgetFeed(publisherID:original.publisherID,publisherName:"Display",publishedAt:Date(),widgets:[])
+        credentials.value=try pairing();try cache.store(original,fetchedAt:Date())
+        let command=AgentControlCommand(publisherID:original.publisherID,widgetID:original.widgets[0].id,rowID:"fixture",action:.reviewDone,revision:String(repeating:"a",count:64))
+        let failed=PhoneRepository(cache:cache,credentials:credentials,client:RejectingPhoneClient(error:.unavailable))
+        do {_=try await failed.perform(command);XCTFail("Must not confirm an unsupported action")} catch {}
+        XCTAssertEqual(cache.load()?.widgets.count,1)
+        let succeeded=PhoneRepository(cache:cache,credentials:credentials,client:ActionPhoneClient(feed:result))
+        let snapshot=try await succeeded.perform(command)
+        XCTAssertEqual(snapshot.feed?.widgets.count,0);XCTAssertEqual(cache.load()?.widgets.count,0)
+    }
+    func testSecondActionCannotSupersedeAnInFlightAction()async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let cache=PhoneSnapshotCache(directory:root),credentials=MemoryPhoneCredentials(),client=SuspendedPhoneClient()
+        credentials.value=try pairing();let feed=PhoneFixtures.feed();try cache.store(feed,fetchedAt:Date())
+        let repository=PhoneRepository(cache:cache,credentials:credentials,client:client)
+        let command=AgentControlCommand(publisherID:feed.publisherID,widgetID:feed.widgets[0].id,rowID:"fixture",action:.reviewDone,revision:String(repeating:"a",count:64))
+        let first=Task {try await repository.perform(command)}
+        await client.waitUntilStarted()
+        do {_=try await repository.perform(command);XCTFail("Expected busy")} catch {XCTAssertEqual(error as? AgentControlError,.busy)}
+        let result=PublishedWidgetFeed(publisherID:feed.publisherID,publisherName:"Display",publishedAt:Date(),widgets:[])
+        await client.finish(.success(result))
+        let applied=try await first.value
+        XCTAssertEqual(applied.feed?.widgets.count,0)
+    }
+    func testActionResponseCannotRestoreContentAfterPairingChanges()async throws {
+        for success in [true,false] {
+            let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer {try? FileManager.default.removeItem(at:root)}
+            let cache=PhoneSnapshotCache(directory:root),credentials=MemoryPhoneCredentials(),client=SuspendedPhoneClient()
+            credentials.value=try pairing();let feed=PhoneFixtures.feed();try cache.store(feed,fetchedAt:Date())
+            let old=PhoneRepository(cache:cache,credentials:credentials,client:client)
+            let command=AgentControlCommand(publisherID:feed.publisherID,widgetID:feed.widgets[0].id,rowID:"fixture",action:.reviewDone,revision:String(repeating:"a",count:64))
+            let task=Task {try await old.perform(command)};await client.waitUntilStarted()
+            let new=PhoneRepository(cache:cache,credentials:credentials,client:ImmediatePhoneClient(feed:feed))
+            try new.pair(pairing())
+            if success {await client.finish(.success(feed))} else {await client.finish(.failure(PhoneFetchError.unauthorized))}
+            do {_=try await task.value;XCTFail("Expected unconfirmed old action")} catch {XCTAssertEqual(error as? AgentControlError,.unconfirmed)}
+            XCTAssertNotNil(credentials.value);XCTAssertNil(cache.load())
+        }
+    }
     func pairing()throws->PhonePairing {try PhonePairing(endpoint:"https://display.example.ts.net:9443/wokintosh/v1/widgets",token:String(repeating:"A",count:43))}
     func testUnpairedRepositoryNeverReturnsAStalePrivateFeed() throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -117,4 +163,10 @@ final class PhoneRepositoryTests:XCTestCase {
         XCTAssertNil(try repository.snapshot().feed)
         XCTAssertNil(credentials.value)
     }
+}
+
+private struct ActionPhoneClient:PhoneFetching {
+    let feed:PublishedWidgetFeed
+    func fetch(_ pairing:PhonePairing)async throws->PublishedWidgetFeed {feed}
+    func perform(_ command:AgentControlCommand,pairing:PhonePairing)async throws->PublishedWidgetFeed {feed}
 }

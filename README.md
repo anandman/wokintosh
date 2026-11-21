@@ -32,7 +32,11 @@ Existing sessions are discovered automatically. Optional observer hooks improve 
 
 The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. These builds are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
 
-The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. A read-only server binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
+The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. The publisher binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
+
+Optional **Allow Agent controls** lets paired devices review Done and change Wokintosh’s manual Blocked annotations. The display Mac saves the shared state; controls stay off by default. While enabled, the pairing key grants these controls as well as viewing access. Provider sessions remain observational.
+
+The app uses the desktop’s classic Mac palette and provider icons. Tap a session to open it, tap the Done checkmark to review it, or long-press a row for manual Blocked controls. Connection and widget selection live in Settings (the Mac icon). Home Screen widgets keep compact classic styling, automatic dark appearance and a Done checkmark; iOS owns their long-press menu.
 
 The paired device mirrors the selected widget’s filters and attention-first ordering. It shows an **As of** time and stale/offline states; iOS schedules widget refreshes and may take longer than the requested 15 minutes. Viewing or opening a session does not review Done notices, send a prompt or approve an action.
 

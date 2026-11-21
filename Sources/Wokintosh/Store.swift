@@ -37,6 +37,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     private let localPython = LocalPythonDiscovery()
     private let actionExecutor:WidgetActionExecutor
     private var actionInFlight=Set<UUID>()
+    let agentControlAuthority=AgentControlAuthority()
     var showEditor: (() -> Void)?
     var showSettings: (() -> Void)?
     var presentDashboard: ((UInt32?) -> Void)?
@@ -70,6 +71,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         nativeSubscription = native.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send();self?.scheduleSourcePublication()
         }
+        publisher.onAgentControl={ [weak self] command in
+            guard let self else {throw AgentControlError.disabled};return try self.applyAgentControl(command)
+        }
         if loaded.previewMode {publishSharedSources()}
     }
 
@@ -93,19 +97,20 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             self?.saveNow()
         }
     }
+    func persistDocument(_ next:DashboardDocument)throws {
+        try FileManager.default.createDirectory(at:dataDirectory,withIntermediateDirectories:true)
+        let file=dataDirectory.appendingPathComponent("layout.json")
+        if layoutNeedsBackup && FileManager.default.fileExists(atPath:file.path) {
+            try FileManager.default.copyItem(at:file,to:dataDirectory.appendingPathComponent("layout-backup-"+UUID().uuidString+".json"))
+            layoutNeedsBackup=false
+        }
+        try JSONEncoder().encode(next).write(to:file,options:.atomic)
+    }
     func saveNow() {
-        do {
-            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
-            let file=dataDirectory.appendingPathComponent("layout.json")
-            if layoutNeedsBackup && FileManager.default.fileExists(atPath:file.path) {
-                try FileManager.default.copyItem(at:file,to:dataDirectory.appendingPathComponent("layout-backup-"+UUID().uuidString+".json"))
-                layoutNeedsBackup=false
-            }
-            try JSONEncoder().encode(document).write(to:file,options:.atomic)
-            lastSaveError=nil
-        } catch {
+        do {try persistDocument(document);lastSaveError=nil}
+        catch {
             let message="Your changes could not be saved. Check that the Wokintosh data folder is writable.\n\n\(error.localizedDescription)"
-            if lastSaveError != message { presentMessage?(AppMessage(title:"Could Not Save Layout",message:message,isError:true));lastSaveError=message }
+            if lastSaveError != message {presentMessage?(AppMessage(title:"Could Not Save Layout",message:message,isError:true));lastSaveError=message}
         }
     }
     /// Persist before publishing so a failed import cannot replace the visible dashboard.
@@ -196,6 +201,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     func duplicateSelected() { if let selectedID { duplicate(selectedID) } }
     func reviewCompletion(_ row:SessionRow) {
+        agentControlAuthority.invalidate(row.id)
         if document.previewMode { reviewedPreviewIDs.insert(row.id) }
         else { document.completions.review(row.id) }
     }
@@ -203,10 +209,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         document.previewMode ? blockedPreviewIDs.contains(row.id) : document.blockedSessions.contains(row.id)
     }
     func markBlocked(_ row:SessionRow) {
+        agentControlAuthority.invalidate(row.id)
         if document.previewMode { blockedPreviewIDs.insert(row.id);reviewedPreviewIDs.insert(row.id) }
         else { document.blockedSessions.mark(row);document.completions.review(row.id) }
     }
     func clearManualBlocked(_ row:SessionRow) {
+        agentControlAuthority.invalidate(row.id)
         if document.previewMode { blockedPreviewIDs.remove(row.id) }
         else { document.blockedSessions.clear(row.id) }
     }
@@ -349,7 +357,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
                 let offline:Int
                 if let host=widget.hostID {offline=feeds.values.contains{$0.snapshot?.host.id==host && $0.connected} ? 0 : 1}
                 else {offline=feeds.values.filter{!$0.connected}.count}
-                let agents=PublishedAgents.make(rows:rows(for:widget),sourceObservations:observations,interval:widget.doneCollapseInterval,showFinished:widget.showFinished,offlineSourceCount:offline,at:now)
+                var agents=PublishedAgents.make(rows:rows(for:widget),sourceObservations:observations,interval:widget.doneCollapseInterval,showFinished:widget.showFinished,offlineSourceCount:offline,at:now)
+                decorateAgentControls(&agents,widgetID:widget.id)
                 return PublishedWidget(id:widget.id,name:widgetSettingsName(widget,in:document.widgets),agents:agents)
             }
             try publisher.publish(payloads,publisherName:feeds["local"]?.displayName ?? "Wokintosh",preview:document.previewMode,at:now)

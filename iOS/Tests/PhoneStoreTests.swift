@@ -99,6 +99,19 @@ final class PhoneStoreTests:XCTestCase {
         try await Task.sleep(for:.milliseconds(20))
         XCTAssertNil(store.selectedSession);XCTAssertNil(store.snapshot.feed)
     }
+    @MainActor func testControlsAreUnavailableWithoutPublishedCapabilities()throws {
+        let fixture=try linkedFixture(provider:"codex",url:"codex://threads/fixture")
+        defer{try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
+        let store=PhoneStore(repository:fixture.repository)
+        XCTAssertNil(store.controlCommand(.reviewDone,rowID:fixture.row.id))
+        let widgetRoute=PhoneWidgetRoute(publisherID:fixture.route.publisherID,widgetID:fixture.route.widgetID)
+        store.handle(widgetRoute.url)
+        XCTAssertEqual(store.earlierSelection,widgetRoute)
+        store.handle(PhoneWidgetRoute(publisherID:fixture.route.publisherID,widgetID:fixture.route.widgetID,section:.agents).url)
+        XCTAssertNil(store.earlierSelection);XCTAssertEqual(store.selectedWidgetID,fixture.route.widgetID)
+        store.handle(PhoneWidgetRoute(publisherID:UUID(),widgetID:fixture.route.widgetID).url)
+        XCTAssertNil(store.earlierSelection)
+    }
     private func linkedFixture(provider:String,url:String,authorized:Bool=true)throws->(repository:PhoneRepository,route:PhoneRoute,row:PublishedAgentRow) {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let credentials=StoreTestCredentials();credentials.value=try pairing()

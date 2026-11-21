@@ -36,6 +36,15 @@ struct PublisherOptions:Codable,Equatable {
     var enabled=false
     var selectedWidgetIDs=Set<UUID>()
     var endpoint=""
+    var allowAgentControls=false
+    init() {}
+    private enum CodingKeys:String,CodingKey {case publisherID,enabled,selectedWidgetIDs,endpoint,allowAgentControls}
+    init(from decoder:Decoder)throws {
+        let c=try decoder.container(keyedBy:CodingKeys.self)
+        publisherID=try c.decode(UUID.self,forKey:.publisherID);enabled=try c.decode(Bool.self,forKey:.enabled)
+        selectedWidgetIDs=try c.decode(Set<UUID>.self,forKey:.selectedWidgetIDs);endpoint=try c.decode(String.self,forKey:.endpoint)
+        allowAgentControls=try c.decodeIfPresent(Bool.self,forKey:.allowAgentControls) ?? false
+    }
 }
 
 @MainActor final class WidgetPublisher:ObservableObject {
@@ -49,6 +58,7 @@ struct PublisherOptions:Codable,Equatable {
     private var serverID:UUID?
     private var token:String?
     private var preview=false
+    var onAgentControl:((AgentControlCommand)throws->Data)?
     private var settingsURL:URL {directory.appendingPathComponent("publisher-settings.json")}
     static let setupCommand="tailscale serve --bg --https=9443 --set-path=/wokintosh http://127.0.0.1:8787"
 
@@ -103,11 +113,21 @@ struct PublisherOptions:Codable,Equatable {
                 if let server {server.update(body:data)} else {
                     let id=UUID(),next=try PublisherServer(token:token!,body:data)
                     serverID=id
+                    next.onCommand={ [weak self] command in
+                        await self?.performControl(command,serverID:id) ?? PublisherHTTPResult(status:503,message:"Unavailable")
+                    }
                     next.onStatus={ [weak self] status in Task { @MainActor [weak self] in if self?.serverID==id {self?.status=status} } }
                     server=next;next.start()
                 }
             } else {status="Ready for your iPhone or iPad"}
         } catch {revoke();status="Could not publish widgets";throw error}
+    }
+    private func performControl(_ command:AgentControlCommand,serverID:UUID)->PublisherHTTPResult {
+        guard self.serverID==serverID,options.enabled,options.allowAgentControls,!preview,let handler=onAgentControl else {return PublisherHTTPResult(status:403,message:"Controls Disabled")}
+        do {return PublisherHTTPResult(status:200,message:"OK",body:try handler(command))}
+        catch AgentControlError.disabled {return PublisherHTTPResult(status:403,message:"Controls Disabled")}
+        catch AgentControlError.conflict {return PublisherHTTPResult(status:409,message:"Session Changed")}
+        catch {return PublisherHTTPResult(status:503,message:"Action Unconfirmed")}
     }
     func pairing()throws->PhonePairing? {
         guard options.enabled,!preview,!options.endpoint.isEmpty else {return nil}
