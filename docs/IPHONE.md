@@ -1,12 +1,12 @@
 # Wokintosh on your iPhone or iPad
 
-This is a source-built development preview installed directly on iPhone or iPad (iOS/iPadOS 17+), with medium and large Home Screen Agent widgets and a full-width extra-large option on iPad. The app and extension share the portable WokintoshCore models; remote collectors keep using SSH.
+The companion is built from source and installed directly on iPhone or iPad (iOS/iPadOS 17+), with medium and large Home Screen Agent widgets and a full-width extra-large option on iPad. The app and extension share the portable WokintoshCore models; remote collectors keep using SSH.
 
 The iPad app supports portrait and landscape. All widget sizes use the same pairing and session links. Extra-large uses two columns and shows up to ten sessions. On iOS/iPadOS 27+, the app also supports Apple's tall extra-large portrait family where the system offers it; Apple documents that family for Today View on iPad. WidgetKit does not offer an arbitrary full-width, double-height Home Screen size.
 
 ## Build and install
 
-There is no prebuilt iOS download or TestFlight distribution yet. Build with your own Apple Account in **Xcode 27 or later** on a compatible Mac; the app runs on **iOS/iPadOS 17 or later**. The newer tall widget family is guarded for iOS/iPadOS 27+. The publishing Mac also needs a build from this checkout; the current public 1.x download does not include mobile publishing.
+There is no prebuilt iOS download or TestFlight distribution yet. Build with your own Apple Account in **Xcode 27 or later** on a compatible Mac; the app runs on **iOS/iPadOS 17 or later**. The newer tall widget family is guarded for iOS/iPadOS 27+. The publishing Mac needs Wokintosh 2.0 or later, available as a signed Mac download or a source build.
 
 1. Clone the repository and create your private signing configuration:
 
@@ -29,7 +29,7 @@ There is no prebuilt iOS download or TestFlight distribution yet. Build with you
 
 3. Select **WokintoshPhone** and check **Signing & Capabilities** for both **WokintoshPhone** and **WokintoshAgentWidget**. Keep automatic signing enabled. Resolve any provisioning prompts for **App Groups** and **Keychain Sharing** using your account. A Mac Developer ID certificate cannot sign an iPhone build; Xcode may create an Apple Development certificate and device profiles.
 4. Connect your iPhone or iPad to the Mac by USB, unlock it and trust the Mac if prompted. Enable **Settings → Privacy & Security → Developer Mode** on the device if requested, including its restart/confirmation. Select that device as Xcode's run destination and choose **Product → Run**. After initial pairing, Xcode can offer wireless development on a reachable local network; Tailscale alone is not a substitute for Xcode's device pairing.
-5. Build the publishing Mac app from the same checkout:
+5. Install Wokintosh 2.0 or later on the publishing Mac from the [Mac download](https://github.com/anandman/wokintosh/releases/latest). To build it yourself from the same checkout:
 
    ```sh
    script/build_and_run.sh --build-only
@@ -58,7 +58,7 @@ For Simulator builds, choose an iPhone/iPad simulator in Xcode. No device provis
 
 ## Connect the display Mac
 
-1. Use the Mac build containing this feature. Open **Settings → iPhone & iPad** and enable publishing.
+1. Use Wokintosh 2.0 or later on the Mac. Open **Settings → iPhone & iPad** and enable publishing.
 2. Select the Agent widgets to publish. Their machine/provider/helper/finished/Done-collapse choices stay on the Mac and also control your device’s contents.
 3. Follow the private Tailscale setup shown there. The dedicated route is:
 
@@ -71,7 +71,7 @@ For Simulator builds, choose an iPhone/iPad simulator in Xcode. No device provis
 5. Show the private pairing code. In the companion app choose **Scan pairing code**. The code grants viewing access to selected widgets and, when **Allow Agent controls** is enabled on the Mac, review/manual Blocked controls. Keep it private.
 6. Add the **Agents** widget using the steps below.
 
-The display Mac and Wokintosh must remain running. The dashboard window can be closed. Your iPhone or iPad needs its Tailscale connection. There is no public relay, iCloud sync, remote command endpoint, or keep-awake change.
+The display Mac and Wokintosh must remain running. The dashboard window can be closed. If macOS pauses the app during memory pressure, resume it before refreshing the companion. A paused or sleeping publisher cannot answer requests. Your iPhone or iPad needs its Tailscale connection. There is no public relay, iCloud sync, remote command endpoint, or keep-awake change.
 
 ## Add the Home Screen widget
 

@@ -51,10 +51,11 @@ for target in "$PAYLOAD" "$RELEASE_STAGE/$COLLECTOR_NAME"; do
     cp "$ROOT_DIR/collector/wokintosh_agent.py" "$target/wokintosh-agent"
     chmod 755 "$target/wokintosh-agent"
     cp "$ROOT_DIR/README.md" "$ROOT_DIR/QUICKSTART.md" "$ROOT_DIR/RELEASE_NOTES.md" \
-       "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$ROOT_DIR/LICENSE" "$ROOT_DIR/CONTRIBUTING.md" "$target/"
+       "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$ROOT_DIR/LICENSE" "$ROOT_DIR/CONTRIBUTING.md" \
+       "$ROOT_DIR/CHANGELOG.md" "$target/"
     mkdir -p "$target/docs/images"
-    cp "$ROOT_DIR/docs/images/dashboard.png" "$target/docs/images/"
-    cp "$ROOT_DIR/docs/ADVANCED.md" "$target/docs/"
+    cp "$ROOT_DIR/docs/images/"*.png "$target/docs/images/"
+    cp "$ROOT_DIR/docs/ADVANCED.md" "$ROOT_DIR/docs/IPHONE.md" "$target/docs/"
 done
 ditto -c -k --norsrc --keepParent "$RELEASE_STAGE/$COLLECTOR_NAME" "$COLLECTOR_ZIP"
 hdiutil create -volname "Wokintosh $WOKINTOSH_VERSION" -srcfolder "$PAYLOAD" -format UDZO -ov "$DMG"

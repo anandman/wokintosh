@@ -28,11 +28,11 @@ The remote machine needs **Python 3.10 or later**. Versioned installations are d
 
 Existing sessions are discovered automatically. Optional observer hooks improve permission/input status; they are enabled separately on each machine. See [agent setup and troubleshooting](docs/ADVANCED.md) for hooks, upgrades and blocked-goal integration.
 
-## iPhone and iPad widgets — development preview
+## iPhone and iPad widgets
 
-These features are planned for **Wokintosh 2.0**, pending further device testing. See the [unreleased changes](CHANGELOG.md).
+**Wokintosh 2.0** adds private mobile publishing and an iPhone/iPad companion. See the [release notes](RELEASE_NOTES.md).
 
-The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. These builds are not included in the current public Mac download. See the [build, installation and pairing guide](docs/IPHONE.md).
+The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. The download above installs the Mac app; build and install the mobile companion separately with Xcode. See the [build, installation and pairing guide](docs/IPHONE.md).
 
 <p>
   <img src="docs/images/ios-app.png" alt="Wokintosh iPhone app with classic Mac styling, fictional Claude and Codex sessions, and Done review controls" width="260">
@@ -56,7 +56,7 @@ open iOS/WokintoshPhone.xcodeproj
 
 Edit the copied, Git-ignored configuration with your **Team ID**, a unique **app bundle ID** and your **App Group ID**. Select the **WokintoshPhone** scheme and your connected device, resolve signing for both the app and widget, and choose **Run**. The checked-in project needs no XcodeGen step. Free Personal Team installs expire after seven days; see [Apple's account limits](https://developer.apple.com/help/account/basics/about-your-developer-account).
 
-Build the publishing Mac from this checkout with `script/build_and_run.sh --build-only`, then quit the older app and open the staged app path it prints. The [complete guide](docs/IPHONE.md) covers identifiers, capabilities, Developer Mode, wireless installation, pairing and adding widgets. TestFlight distribution is a future decision.
+Install Wokintosh 2.0 or later on the publishing Mac. To build it yourself, use `script/build_and_run.sh --build-only`, then quit the older app and open the staged app path it prints. The [complete guide](docs/IPHONE.md) covers identifiers, capabilities, Developer Mode, wireless installation, pairing and adding widgets. TestFlight distribution is a future decision.
 
 ### Private publishing and controls
 
@@ -78,7 +78,7 @@ Use another Mac’s Apple Music and selected calendars without connecting those 
 
 1. Install Wokintosh 1.3 or later on the source Mac and keep it running; its dashboard can be closed.
 2. In that Mac’s **Settings → Connections → Share from this Mac**, enable **Share Now Playing** or **Share selected calendars**. Connect the local source above if needed, and select the calendars to share. Sharing is off by default; Calendar initially shares none.
-3. On the display Mac, connect that machine in **Settings → Machines** and choose **Install / Update** to install the 1.3 collector.
+3. On the display Mac, connect that machine in **Settings → Machines** and choose **Install / Update** to install the latest collector.
 4. Select the machine in the Now Playing or Calendar widget’s **Content → Machine** setting.
 
 Remote sources are read-only, carry artwork or upcoming event titles/times over your existing SSH connection, and show stale/offline status. Calendar permissions stay on the source Mac. Notes, attendees, locations and links are not shared. Anyone able to use your SSH account on the source Mac can read its enabled shared sources. Sharing choices stay on that Mac and are excluded from setup exports and templates. Weather uses the location chosen separately for each widget.

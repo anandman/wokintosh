@@ -1,8 +1,6 @@
 # Changelog
 
-## 2.0 — Unreleased
-
-Planned next release, pending further iPhone and iPad testing and release confirmation.
+## 2.0.0 — 2026-11-22
 
 - Add a universal iPhone and iPad companion app with Agent widgets, including full-width iPad layouts and the tall family where the system offers it.
 - Publish selected Agent widgets privately through Tailscale HTTPS, with pairing, matching desktop filters and ordering, and original source timestamps and stale/offline states.
@@ -13,4 +11,4 @@ Planned next release, pending further iPhone and iPad testing and release confir
 
 ## 1.3.1
 
-Released: consistent, readable System widget layouts across machines. See the [release notes](RELEASE_NOTES.md).
+Released: consistent, readable System widget layouts across machines. See the [1.3.1 release notes](https://github.com/anandman/wokintosh/releases/tag/v1.3.1).
