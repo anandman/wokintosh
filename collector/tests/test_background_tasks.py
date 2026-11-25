@@ -158,6 +158,61 @@ class BackgroundTests(unittest.TestCase):
         snap=agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=4))
         s=next(x for x in snap['sessions'] if x['id']=='session')
         self.assertEqual(s['state'],'needsAttention')
+    def test_current_claude_inventory_does_not_resurrect_absent_old_helpers(self):
+        for state in ('StopFailure', 'PreToolUse'):
+            with self.subTest(state=state):
+                directory=self.root/state
+                agent.ingest_hook('claude',{'session_id':'session','agent_id':'old-helper','hook_event_name':state},directory,directory/'state',NOW)
+                agent.ingest_hook('claude',{'session_id':'session','hook_event_name':'Stop','background_tasks':[{'id':'watch','type':'monitor','status':'running'}]},directory,directory/'state',NOW+timedelta(seconds=10))
+                for seconds in (11,12):
+                    snapshot=agent.make_snapshot(directory,directory/'state',NOW+timedelta(seconds=seconds))
+                    parent=next(s for s in snapshot['sessions'] if s['id']=='session')
+                    self.assertEqual(parent['state'],'idle')
+                    self.assertEqual(parent['activity'],'Monitoring')
+                    self.assertFalse(any(t['id']=='old-helper' and t['status'] in agent.BACKGROUND_ACTIVE for t in parent['background']['tasks']))
+    def test_claude_helper_newer_than_inventory_still_needs_attention(self):
+        agent.ingest_hook('claude',{'session_id':'session','hook_event_name':'Stop','background_tasks':[]},self.root,self.root/'state',NOW)
+        agent.ingest_hook('claude',{'session_id':'session','agent_id':'new-helper','hook_event_name':'PermissionRequest'},self.root,self.root/'state',NOW+timedelta(seconds=1))
+        parent=next(s for s in agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=2))['sessions'] if s['id']=='session')
+        self.assertEqual(parent['state'],'needsAttention')
+    def test_codex_guardian_reviews_do_not_contribute_project_work(self):
+        parent=[{'type':'session_meta','timestamp':at(),'payload':{'id':'parent','cwd':'/src/example'}},{'type':'event_msg','timestamp':at(2),'payload':{'type':'task_complete'}}]
+        guardian=[{'type':'session_meta','timestamp':at(3),'payload':{'id':'review','cwd':'/src/example','source':{'subagent':{'other':'guardian'}},'parent_thread_id':'parent'}}]
+        self.log(parent,'.codex/sessions/parent.jsonl');self.log(guardian,'.codex/sessions/review.jsonl')
+        for seconds in (4,5):
+            snapshot=agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=seconds))
+            session=next(s for s in snapshot['sessions'] if s['id']=='parent')
+            self.assertEqual(session['state'],'finished')
+            self.assertEqual(session['updatedAt'],at(2))
+            self.assertFalse(any(t['id']=='review' for t in session.get('background',{}).get('tasks',[])))
+    def test_guardian_title_alone_does_not_hide_real_child_work(self):
+        parent=[{'type':'session_meta','timestamp':at(),'payload':{'id':'parent'}},{'type':'event_msg','timestamp':at(2),'payload':{'type':'task_complete'}}]
+        child=[{'type':'session_meta','timestamp':at(3),'payload':{'id':'child','title':'Guardian review','source':{'subagent':{'thread_spawn':{'parent_thread_id':'parent'}}}}},{'type':'event_msg','timestamp':at(3),'payload':{'type':'task_started'}}]
+        self.log(parent,'.codex/sessions/parent.jsonl');self.log(child,'.codex/sessions/child.jsonl')
+        session=next(s for s in agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=4))['sessions'] if s['id']=='parent')
+        self.assertEqual(session['state'],'working')
+    def test_codex_guardian_classification_upgrades_existing_parse_cache(self):
+        self.log([{'type':'session_meta','timestamp':at(),'payload':{'id':'parent'}},{'type':'event_msg','timestamp':at(2),'payload':{'type':'task_complete'}}],'.codex/sessions/parent.jsonl')
+        self.log([{'type':'session_meta','timestamp':at(3),'payload':{'id':'review','source':{'subagent':{'other':'guardian'}},'parent_thread_id':'parent'}}],'.codex/sessions/review.jsonl')
+        state=self.root/'state';agent.make_snapshot(self.root,state,NOW+timedelta(seconds=4))
+        cache=json.loads((state/'parse-cache.json').read_text())
+        for entry in cache['entries'].values():
+            entry['fingerprint']=entry['fingerprint'][:5]
+            entry['session'].pop('_codexInternalReview',None)
+        (state/'parse-cache.json').write_text(json.dumps(cache))
+        session=next(s for s in agent.make_snapshot(self.root,state,NOW+timedelta(seconds=5))['sessions'] if s['id']=='parent')
+        self.assertEqual(session['state'],'finished')
+    def test_inventory_keeps_verified_existing_helper_work(self):
+        agent.ingest_hook('claude',{'session_id':'session','agent_id':'child','hook_event_name':'PreToolUse'},self.root,self.root/'state',NOW)
+        agent.ingest_hook('claude',{'session_id':'session','hook_event_name':'Stop','background_tasks':[{'id':'child','type':'subagent','status':'running'}]},self.root,self.root/'state',NOW+timedelta(seconds=10))
+        session=next(s for s in agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=11))['sessions'] if s['id']=='session')
+        self.assertEqual(session['state'],'working')
+    def test_inventory_preserves_explicit_helper_completion(self):
+        agent.ingest_hook('claude',{'session_id':'session','agent_id':'child','hook_event_name':'SubagentStop'},self.root,self.root/'state',NOW)
+        agent.ingest_hook('claude',{'session_id':'session','hook_event_name':'Stop','background_tasks':[]},self.root,self.root/'state',NOW+timedelta(seconds=10))
+        session=next(s for s in agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(seconds=11))['sessions'] if s['id']=='session')
+        task=next(t for t in session['background']['tasks'] if t['id']=='child')
+        self.assertEqual(task['status'],'completed');self.assertEqual(task['updatedAt'],at())
     def test_first_oversized_or_malformed_registry_never_reports_false_done(self):
         for tasks in ([{}],[{'id':'job-'+str(i),'type':'shell','status':'running'} for i in range(65)]):
             state=self.root/('state-'+str(len(tasks)))
@@ -198,6 +253,20 @@ class BackgroundTests(unittest.TestCase):
                 value=agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(hours=1))['sessions'][0]
             self.assertEqual(value['state'],'working');self.assertEqual(value['updatedAt'],at(2))
         finally:shutil.rmtree(output.parent.parent)
+    def test_session_scoped_claude_output_keeps_quiet_work_verified(self):
+        import os,shutil,subprocess,sys
+        project=self.root.name+'-scoped-writer'
+        output=Path(tempfile.gettempdir())/('claude-'+str(os.getuid()))/project/'session'/'tasks'/'job.output'
+        output.parent.mkdir(parents=True,exist_ok=True);output.touch()
+        process=subprocess.Popen([sys.executable,'-c','import sys,time; f=open(sys.argv[1],"a"); print("ready",flush=True); time.sleep(15)',str(output)],stdout=subprocess.PIPE,text=True)
+        try:
+            self.assertEqual(process.stdout.readline().strip(),'ready')
+            self.log([self.claude('user'),self.stop()],'.claude/projects/'+project+'/session.jsonl')
+            agent.ingest_hook('claude',{'session_id':'session','hook_event_name':'Stop','background_tasks':[{'id':'job','type':'shell','status':'running'}]},self.root,self.root/'state',NOW)
+            value=next(s for s in agent.make_snapshot(self.root,self.root/'state',NOW+timedelta(hours=1))['sessions'] if s['id']=='session')
+            self.assertEqual(value['state'],'working');self.assertEqual(value['updatedAt'],at(2))
+        finally:
+            process.terminate();process.wait(timeout=2);process.stdout.close();shutil.rmtree(output.parent.parent.parent)
     def test_registry_disappearance_has_unspecified_end_not_success(self):
         event={'session_id':'session','hook_event_name':'Stop','background_tasks':[{'id':'job','type':'shell','status':'running'}]}
         agent.ingest_hook('claude',event,self.root,self.root/'state',NOW)

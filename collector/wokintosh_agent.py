@@ -29,7 +29,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
 from urllib.parse import urlsplit, parse_qsl, unquote
 
-COLLECTOR_VERSION = '2.1.0'
+COLLECTOR_VERSION = '2.1.1'
 MAX_COLLECTOR_BYTES = 1024 * 1024
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -1094,9 +1094,18 @@ def refresh_background_liveness(session, path, now, deadline):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            output = root / ('claude-' + str(os.getuid())) / path.parent.name / 'tasks' / (task['id'] + '.output')
-            if output.exists() and background_file_is_open(output, min(0.4, remaining)):
-                task['observedAt'] = stamp(now)
+            project = root / ('claude-' + str(os.getuid())) / path.parent.name
+            # Current Claude versions isolate outputs by session; retain the old layout too.
+            outputs = [project / path.stem / 'tasks' / (task['id'] + '.output'),
+                       project / 'tasks' / (task['id'] + '.output')]
+            for output in outputs:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                if output.exists() and background_file_is_open(output, min(0.4, remaining)):
+                    task['observedAt'] = stamp(now)
+                    break
+            if task['observedAt'] == stamp(now):
                 break
 
 
@@ -1136,8 +1145,10 @@ def read_codex(path, now, title_index=None, previous_background=None):
             if canonical_thread_id(payload.get('id')):
                 metadata['_codexThreadID'] = payload['id']
             metadata['isHelper'] = metadata['isHelper'] or (isinstance(source, dict) and 'subagent' in source)
+            if isinstance(source, dict) and isinstance(source.get('subagent'), dict) and source['subagent'].get('other') == 'guardian':
+                metadata['_codexInternalReview'] = True
             if session and session['id'] == metadata['id']:
-                for field in ('title', 'project', 'parentId', 'isHelper', '_codexThreadID'):
+                for field in ('title', 'project', 'parentId', 'isHelper', '_codexThreadID', '_codexInternalReview'):
                     if field not in metadata:
                         continue
                     session[field] = metadata[field]
@@ -1641,6 +1652,8 @@ def valid_session(value, provider=None):
     if value['provider'] == 'claude' and bridge_id:
         result['_bridgeSessionID'] = bridge_id
     result['isHelper'] = value.get('isHelper', False) or bool(value.get('parentId'))
+    if value['provider'] == 'codex' and result['isHelper'] and value.get('_codexInternalReview') is True:
+        result['_codexInternalReview'] = True
     if value['provider'] in ADDITIONAL_PROVIDERS:
         if ((value['provider'] == 'opencode' and not opencode_identity(value['id'])) or
                 (value['provider'] == 'antigravity' and not canonical_thread_id(value['id'])) or
@@ -2200,6 +2213,10 @@ def merge_helper_background(sessions, now):
     """Hidden helper rows still contribute to their parent's effective lifecycle."""
     children = {}
     for key, child in sessions.items():
+        # Guardian transcripts are internal approval reviews, not delegated project work.
+        # Their metadata-only records often have no task lifecycle to complete.
+        if child['provider'] == 'codex' and child.get('_codexInternalReview') is True:
+            continue
         parent = (child['provider'], child.get('parentId'))
         if parent in sessions and parent != key:
             children.setdefault(parent, []).append(key)
@@ -2221,7 +2238,16 @@ def merge_helper_background(sessions, now):
                 status = 'unknown'
             if child.get('background') and child['state'] == 'idle' and any(task['status'] == 'running' for task in child['background']['tasks']):
                 status = 'running'
-            observe_background_task(background, child_id, 'subagent', status, parse_time(child['updatedAt'], now), child['title'])
+            observed = max([child['updatedAt']] + [item['observedAt'] for item in (child.get('background') or {}).get('tasks', []) if item['status'] == 'running'], key=lambda value:parse_time(value, now))
+            inventory_at = parse_time(background.get('inventoryAt'), None)
+            existing = next((task for task in background['tasks'] if task['id'] == child_id), None)
+            at = parse_time(child['updatedAt'], now)
+            # A complete parent inventory supersedes older helper observations. Do
+            # not resurrect an absent task from an old transcript or hook summary.
+            if (child['provider'] == 'claude' and status in BACKGROUND_ACTIVE and inventory_at and parse_time(observed, now) < inventory_at and
+                    (existing is None or existing['status'] not in BACKGROUND_ACTIVE)):
+                status, at = 'ended', inventory_at
+            observe_background_task(background, child_id, 'subagent', status, at, child['title'])
             task = next((task for task in background['tasks'] if task['id'] == child_id), None)
             if task:
                 task['startedAt'] = child.get('_startedAt', task['startedAt'])
@@ -2272,6 +2298,9 @@ def make_snapshot(home, state_dir, now, host_name=None):
                 key_hash = hashlib.sha256((provider + '\0' + str(path)).encode()).hexdigest()
                 fingerprint = [info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino,
                                title_revision if provider == 'codex' else '']
+                if provider == 'codex':
+                    # Reparse old helper metadata while retaining cached background evidence.
+                    fingerprint.append('helper-purpose-v1')
                 entry = cached.get(key_hash)
                 previous = (entry.get('session') or {}).get('background') if isinstance(entry, dict) else None
                 if isinstance(entry, dict) and 'session' in entry and entry.get('fingerprint') == fingerprint:

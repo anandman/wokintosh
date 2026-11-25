@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.1 — 2026-11-25
+
+- Stop historical Claude helper errors and unfinished observations from overriding a newer complete task inventory. Preserve confirmed helper completions and newer requests for input.
+- Exclude explicitly identified internal Codex Guardian reviews from project background work, preventing metadata-only reviews from leaving completed sessions Unknown.
+- Support Claude's session-specific task-output directories when verifying that quiet background work is still running. Continue supporting the older directory layout and require positive writer evidence.
+- The iPhone/iPad companion is unchanged from 2.1.0; corrected states arrive through the publishing Mac after its collectors update.
+
 ## 2.1.0 — 2026-11-24
 
 - Add Antigravity App/CLI and OpenCode App/CLI as explicitly Untested integrations, with fixture-tested metadata collection, observational installation and conservative state handling. Antigravity IDE is excluded.
