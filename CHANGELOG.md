@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.3 — 2026-11-24
 
 - Track Claude and Codex background-task lifecycles separately from foreground responses, keeping finite background work from becoming false Done notices. Missing or stale evidence is reported as unverified.
 - Add per-runner Automatic, Work and Monitor controls through the Mac right-click and mobile app long-press menus. Choices are shared by the publishing Mac and excluded from setup exports.

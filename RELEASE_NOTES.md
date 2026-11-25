@@ -1,10 +1,14 @@
-# Wokintosh 2.0.2
+# Wokintosh 2.0.3
 
-Collector updates now announce themselves with a native popup, and System readings are easier to distinguish at a glance.
+Background work now has a lifecycle of its own, with shared controls for persistent monitors on Mac, iPhone and iPad.
 
-- **Collector update popup.** Choose Review Updates to open Settings → Machines, or Later to keep working with the menu reminder still available. The popup names affected machines, including a local managed observer when needed. New updates can prompt again; acknowledged updates stay quiet across polling and app relaunches. A popup that was never shown is not permanently dismissed.
-- **Clearer System readings.** CPU is blue, RAM purple and disk space green, with matching values, bold headings, larger icons and lightly tinted reading panels. USED and FREE are more prominent. RAM remains in GB; disk measurements and usage bars keep their existing meaning.
+- **Background jobs stay Working.** Claude and Codex task evidence is tracked separately from the foreground response. A response ending no longer means that its finite background jobs have finished. Helpers contribute to their parent session even when helper rows are hidden; permission and input requests still take precedence.
+- **Monitoring stays visible below Working.** Explicit provider monitors, or runners you designate as monitors, use the neutral Monitoring state between active turns. They remain visible with inactive sessions hidden and do not inflate the Working count.
+- **Choose a role for each runner.** Right-click a session on Mac, or long-press it in the iPhone/iPad app, then choose Background Tasks… and Automatic, Work or Monitor. The display Mac saves these choices and shares the resulting state with paired devices. Normal session taps still open Claude or Codex immediately. Home Screen widgets display the shared status and retain their Done review action.
+- **Reliable completion notices.** Duplicate task notifications do not recreate a reviewed Done notice. Task-ID reuse, incomplete inventories, stale mobile actions and legacy observer timestamps are handled conservatively. Missing activity evidence shows Unknown instead of inventing a completion. A task that leaves a complete provider registry has an unspecified Ended outcome unless the provider reports more detail.
 
-Install through Sparkle’s **Check for Updates**, or download the signed, notarized Mac app. Update collectors only when Machines says they need it. The collector code is unchanged from 2.0.1, so already-current collectors do not need another installation. Existing iPhone/iPad builds remain compatible and do not need reinstalling. The companion remains source-built with Xcode.
+Install the signed, notarized Mac update through Sparkle’s **Check for Updates**, then use **Settings → Machines → Update** for affected collectors and managed observers. Version 2.0.3 includes changed collector code. Older collectors remain compatible but cannot supply the new task details.
 
-Notification acknowledgements are local to this Mac and stay out of setup exports. Reviewing the popup opens Machines; collector installation still requires your explicit Update action.
+Update the source-built iPhone/iPad companion to 2.0.3 (build 20) for the new controls and Monitoring labels. These require the publishing Mac’s existing **Allow Agent controls** setting. Runner choices apply to the current task run and stay out of setup exports. They do not start, stop or approve provider work.
+
+Codex currently uses recorded command and task events; Wokintosh does not attach a second server to infer the state of existing terminals. Known tasks whose activity cannot be verified are shown as Unknown. Widget refreshes remain scheduled by iOS/iPadOS, with the source time shown.
