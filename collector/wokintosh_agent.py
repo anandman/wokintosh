@@ -27,6 +27,9 @@ import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
+COLLECTOR_VERSION = '2.0.1'
+MAX_COLLECTOR_BYTES = 1024 * 1024
+
 MAX_LOG_BYTES = 2 * 1024 * 1024
 MAX_SHARED_SOURCES_BYTES = 1024 * 1024
 MAX_SHARED_ARTWORK_BYTES = 128 * 1024
@@ -932,7 +935,7 @@ def structured_goal_status(provider, event):
     return status if status in ('blocked', 'paused', 'active', 'complete') else None
 
 
-def merge_goal_markers(sessions, state_dir, home=None):
+def merge_goal_markers(sessions, state_dir, home=None, transcript_identities=frozenset()):
     directory = state_dir / 'goals'
     if not directory.exists() and home is None:
         return set()
@@ -963,10 +966,13 @@ def merge_goal_markers(sessions, state_dir, home=None):
             for key, (path, marker) in markers.items():
                 retained.add(key)
                 current = sessions.get(key)
-                if current is not None and (current.get('isHelper') or current.get('parentId')):
+                if current is not None and (key in transcript_identities or current.get('isHelper') or current.get('parentId')):
                     classified = dict(marker)
-                    classified['isHelper'] = True
-                    classified['parentId'] = current.get('parentId') or marker.get('parentId')
+                    # A saved transcript supersedes a prior hook-only helper guess,
+                    # including when that classification was retained with a goal.
+                    classified['isHelper'] = bool(current.get('isHelper') or current.get('parentId'))
+                    classified['parentId'] = (current.get('parentId') if key in transcript_identities else
+                                              current.get('parentId') or marker.get('parentId'))
                     if classified != marker:
                         atomic_json(path, classified)
                         marker = classified
@@ -1110,6 +1116,80 @@ def read_shared_sources(home, now):
         return None
 
 
+def collector_revision(content):
+    # The SSH installer pins a compatible interpreter without changing the code.
+    return hashlib.sha256(content.split(b'\n', 1)[-1]).hexdigest()
+
+
+def read_managed_observer(home):
+    if platform.system() != 'Darwin':
+        return None
+    path = home / 'Library/Application Support/Wokintosh/bin/Wokintosh-status-observer.py'
+    for parent in path.relative_to(home).parents:
+        if (home / parent).is_symlink():
+            raise ValueError('The managed observer folder must not be a symbolic link')
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise ValueError('The managed observer could not be read safely') from error
+    with os.fdopen(descriptor, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or
+                info.st_mode & 0o022 or not info.st_mode & stat.S_IWUSR or
+                not os.access(path, os.W_OK) or info.st_size > MAX_COLLECTOR_BYTES):
+            raise ValueError('The managed observer must be a private writable user-owned regular file')
+        content = stream.read(MAX_COLLECTOR_BYTES + 1)
+    if (len(content) > MAX_COLLECTOR_BYTES or not content.startswith(b'#!') or
+            not content.split(b'\n', 1)[-1].startswith(b'"""Wokintosh protocol-v1 collector.') or
+            b"MARKER = 'wokintosh-observer'" not in content):
+        raise ValueError('The existing observer is not a recognized Wokintosh collector')
+    return path, info, content
+
+
+def collector_metadata(home):
+    content = Path(__file__).read_bytes()
+    result = {'version': COLLECTOR_VERSION, 'revision': collector_revision(content)}
+    try:
+        existing = read_managed_observer(home)
+        result['observerStatus'] = ('notInstalled' if existing is None else
+                                    'current' if collector_revision(existing[2]) == result['revision'] else
+                                    'updateAvailable')
+    except (OSError, ValueError):
+        result['observerStatus'] = 'unavailable'
+    return result
+
+
+def refresh_managed_observer(home):
+    """Explicit install operation; never called by a hook or snapshot poll."""
+    existing = read_managed_observer(home)
+    if existing is None:
+        return {'status': 'notInstalled'}
+    path, info, previous = existing
+    content = Path(__file__).read_bytes()
+    if collector_revision(previous) == collector_revision(content):
+        return {'status': 'current'}
+    backup = path.with_name(path.name + '.wokintosh-backup-' + str(uuid.uuid4()))
+    # Back up before replacement; refuse a concurrent change to the destination.
+    descriptor = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(previous)
+    descriptor, temporary = tempfile.mkstemp(prefix='.wokintosh-observer-', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(content)
+            os.fchmod(stream.fileno(), 0o700)
+        current = os.lstat(path)
+        if (current.st_dev, current.st_ino, current.st_mtime_ns, current.st_size) != (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size):
+            raise ValueError('The managed observer changed during its update; backup retained')
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return {'status': 'updated', 'backupPath': str(backup)}
+
+
 def make_snapshot(home, state_dir, now, host_name=None):
     state_dir.mkdir(parents=True, exist_ok=True)
     title_index = {}
@@ -1117,6 +1197,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
         if isinstance(item.get('id'), str):
             title_index[item['id']] = clean(item.get('thread_name') or item.get('title'), 90)
     sessions = {}
+    transcript_identities = set()
     bridge_links = {}
     errors = []
     cached = load_parse_cache(state_dir / 'parse-cache.json')
@@ -1154,6 +1235,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
                 session = finalize(dict(session), now) if session else None
                 if session:
                     key = (provider, session['id'])
+                    transcript_identities.add(key)
                     if key not in sessions or session['updatedAt'] > sessions[key]['updatedAt']:
                         sessions[key] = session
             except (OSError, ValueError, TypeError, KeyError):
@@ -1203,7 +1285,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
                     finalize(sessions[key], now)
         except (OSError, ValueError, KeyError, TypeError):
             continue
-    goal_identities = merge_goal_markers(sessions, state_dir, home)
+    goal_identities = merge_goal_markers(sessions, state_dir, home, transcript_identities)
     if goal_identities is None:
         errors.append('Goal status unavailable')
     for key, session in sessions.items():
@@ -1221,7 +1303,8 @@ def make_snapshot(home, state_dir, now, host_name=None):
                  s.get('goalBlocked') is True or s['state'] == 'blocked' or
                  (now-parse_time(s['updatedAt'], now)).total_seconds() < 7*86400]
     snapshot = {'schemaVersion': 1, 'host': {'id': host_identity(state_dir), 'name': clean(host_name or socket.gethostname().split('.')[0]), 'platform': 'macos' if platform.system() == 'Darwin' else platform.system().lower()},
-                'generatedAt': stamp(now), 'sessions': recent, 'system': system_stats(home, state_dir), 'errors': errors}
+                'generatedAt': stamp(now), 'sessions': recent, 'system': system_stats(home, state_dir), 'errors': errors,
+                'collector': collector_metadata(home)}
     shared_sources = read_shared_sources(home, now)
     if shared_sources is not None:
         snapshot['sharedSources'] = shared_sources
@@ -1661,6 +1744,11 @@ def ingest_hook(provider, event, home, state_dir, now):
         session = None
     if session is None:
         session = base_session(identity, provider, event.get('cwd', ''), now, event.get('session_title'), parent)
+    # Codex explicitly sends null for nonpersistent runs (for example its
+    # ambient suggestions and safety checks). An omitted field is unknown, not
+    # proof of a helper. Persist only this classification, never a transcript path.
+    if provider == 'codex' and 'transcript_path' in event and event['transcript_path'] is None:
+        session['isHelper'] = True
     observation = {key: event[key] for key in HOOK_EVENT_FIELDS
                    if key in event and isinstance(event[key], str) and len(event[key]) <= 180}
     observation['_observedAt'] = stamp(now)
@@ -1701,11 +1789,18 @@ def main(argv=None):
     install.add_argument('--dry-run', action='store_true')
     install.add_argument('--consolidate-sources', action='store_true',
                          help='Explicitly consolidate Codex hooks.json into existing TOML hook tables, with full backups')
+    refresh = sub.add_parser('refresh-observer', help='Explicitly update an existing managed observer copy with a backup')
+    refresh.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
     state_dir = args.state_dir or state_directory(args.home)
     now = datetime.now(timezone.utc)
     if args.command == 'snapshot':
         print(json.dumps(make_snapshot(args.home, state_dir, now, args.host_name), separators=(',', ':')))
+    elif args.command == 'refresh-observer':
+        try:
+            print(json.dumps(refresh_managed_observer(args.home)))
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
     elif args.command == 'goal-status':
         try:
             set_goal_status(state_dir, args.provider, args.session_id, args.status, now, args.title, args.project)

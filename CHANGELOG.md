@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1 — 2026-11-24
+
+- Classify Codex’s explicitly nonpersistent hook sessions as helpers, so temporary suggestion and safety jobs respect the existing Show Helpers setting. Missing transcript metadata remains compatible with older hooks.
+- Show collector and observer update notices in Machines, with a dashboard shortcut. Compare code fingerprints while preserving protocol-v1 compatibility and avoid recommending downgrades of newer collectors.
+- Refresh an existing private Wokintosh-managed observer copy during an explicit remote collector update, with backup and atomic replacement. Provider hook configuration, trust and session state stay intact.
+
 ## 2.0.0 — 2026-11-22
 
 - Add a universal iPhone and iPad companion app with Agent widgets, including full-width iPad layouts and the tall family where the system offers it.

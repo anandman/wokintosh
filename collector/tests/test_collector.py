@@ -123,6 +123,62 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(len(children),2)
         self.assertTrue(all(s["state"]=="finished" for s in children))
 
+    def test_codex_explicit_null_transcript_classifies_nonpersistent_hooks_as_helpers(self):
+        state = self.root / "state"
+        # Each supported event can be the first observation of an ephemeral run.
+        for name in ("SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Stop"):
+            agent.ingest_hook("codex", {"session_id": name, "hook_event_name": name,
+                                      "transcript_path": None}, self.root, state, NOW)
+        first = agent.make_snapshot(self.root, state, NOW)["sessions"]
+        self.assertEqual(len(first), 5)
+        self.assertTrue(all(item["isHelper"] for item in first))
+        # A later event from an older hook shape must not erase the known classification.
+        agent.ingest_hook("codex", {"session_id": "Stop", "hook_event_name": "Stop"},
+                          self.root, state, NOW + timedelta(seconds=1))
+        second = agent.make_snapshot(self.root, state, NOW + timedelta(seconds=2))["sessions"]
+        self.assertTrue(all(item["isHelper"] for item in second))
+        self.assertTrue(all("openURLs" not in item for item in second))
+
+    def test_missing_or_malformed_transcript_metadata_does_not_hide_regular_hooks(self):
+        state = self.root / "state"
+        for index, extra in enumerate(({}, {"transcript_path": "/not-yet-readable/rollout.jsonl"},
+                                       {"transcript_path": ""}, {"transcript_path": False},
+                                       {"transcript_path": []})):
+            agent.ingest_hook("codex", {"session_id": str(index), "hook_event_name": "Stop", **extra},
+                              self.root, state, NOW)
+        agent.ingest_hook("claude", {"session_id": "claude", "hook_event_name": "Stop",
+                                   "transcript_path": None}, self.root, state, NOW)
+        sessions = agent.make_snapshot(self.root, state, NOW)["sessions"]
+        self.assertEqual(len(sessions), 6)
+        self.assertFalse(any(item["isHelper"] for item in sessions))
+
+    def test_persisted_codex_transcript_overrides_transient_hook_classification(self):
+        state = self.root / "state"
+        agent.ingest_hook("codex", {"session_id": "saved", "hook_event_name": "Stop",
+                                  "transcript_path": None}, self.root, state, NOW)
+        self.log(".codex/sessions/saved.jsonl", self.codex("saved", "task_complete"))
+        for _ in range(2):  # A cache hit must preserve the stronger persisted metadata too.
+            sessions = agent.make_snapshot(self.root, state, NOW)["sessions"]
+            self.assertEqual(len(sessions), 1)
+            self.assertFalse(sessions[0]["isHelper"])
+
+    def test_saved_transcript_overrides_earlier_ephemeral_goal_marker_classification(self):
+        state = self.root / "state"
+        agent.ingest_hook("codex", {"session_id": "saved-goal", "hook_event_name": "Stop",
+                                  "transcript_path": None}, self.root, state, NOW)
+        agent.set_goal_status(state, "codex", "saved-goal", "blocked", NOW)
+        first = agent.make_snapshot(self.root, state, NOW)["sessions"][0]
+        self.assertTrue(first["isHelper"])
+        self.assertTrue(first["goalBlocked"])
+        self.log(".codex/sessions/saved-goal.jsonl", self.codex("saved-goal", "task_complete"))
+        for _ in range(2):
+            current = agent.make_snapshot(self.root, state, NOW)["sessions"][0]
+            self.assertFalse(current["isHelper"])
+            self.assertEqual(current["state"], "blocked")
+            self.assertTrue(current["goalBlocked"])
+            marker = json.loads(agent.goal_marker_path(state, "codex", "saved-goal").read_text())
+            self.assertFalse(marker["isHelper"])
+
     def test_newer_hook_keeps_transcript_metadata(self):
         rows=self.codex("a")
         rows[0]["payload"].update(title="Custom parent",source={"subagent":{"thread_spawn":{"parent_thread_id":"ancestor"}}})

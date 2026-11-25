@@ -14,6 +14,7 @@ public struct RemoteInstallResult: Sendable {
     public let pythonVersion: String
     public let backupPath: String?
     public let cleanupWarning: String?
+    public let observerBackupPath: String?
 }
 
 public enum RemoteInstall {
@@ -66,13 +67,24 @@ public enum RemoteInstall {
             let commit = try JSONDecoder().decode(CommitResult.self, from: ssh(python(promoteScript, [path, staging, backup])))
             guard commit.backupPath == nil || commit.backupPath == backup else { throw RunnerError.failed("The remote installer returned an unexpected backup path.") }
             progress("Verifying the installed collector…")
-            let snapshot = try Snapshot.decode(ssh(python(verifyInstalledScript, [path, staging]), maxBytes: 16 * 1024 * 1024, timeout: 30))
-            let cleanupWarning: String?
-            do { _ = try ssh(python(cleanupScript, [staging])); cleanupWarning = nil }
-            catch { cleanupWarning = "The collector is installed, but the temporary folder could not be removed: \(staging)" }
+            var snapshot = try Snapshot.decode(ssh(python(verifyInstalledScript, [path, staging]), maxBytes: 16 * 1024 * 1024, timeout: 30))
+            var warnings:[String]=[]
+            var observerBackupPath:String?
+            progress("Updating any existing Wokintosh-managed status observer…")
+            do {
+                let observer=try JSONDecoder().decode(ObserverRefresh.self,from:ssh(python(refreshObserverScript,[path,staging])))
+                guard ["updated","current","notInstalled"].contains(observer.status) else {throw RunnerError.failed("The observer returned an unknown update status.")}
+                observerBackupPath=observer.backupPath
+                snapshot.collector?.observerStatus=observer.status == "notInstalled" ? "notInstalled" : "current"
+            } catch {
+                warnings.append("The collector is installed, but its status observer could not be updated. On the source Mac, use Machines → Enable / Update Hooks after updating its app. \(error.localizedDescription)")
+            }
+            do { _ = try ssh(python(cleanupScript, [staging])) }
+            catch { warnings.append("The collector is installed, but the temporary folder could not be removed: \(staging)") }
+            let cleanupWarning=warnings.isEmpty ? nil : warnings.joined(separator:"\n")
             return RemoteInstallResult(snapshot: snapshot, collectorPath: path,
                                        pythonVersion: probe.version.map(String.init).joined(separator: "."),
-                                       backupPath: commit.backupPath, cleanupWarning: cleanupWarning)
+                                       backupPath: commit.backupPath, cleanupWarning: cleanupWarning,observerBackupPath:observerBackupPath)
         } catch {
             let original = error.localizedDescription
             if promotionStarted {
@@ -88,6 +100,7 @@ public enum RemoteInstall {
     }
 
     private struct CommitResult: Decodable { let backupPath: String? }
+    private struct ObserverRefresh:Decodable {let status:String;let backupPath:String?}
     // The lock is precreated inside the private stage. Never recreate it: a late
     // process holding an unlinked lock must fail its stage/inode check after cleanup.
     private static let lockScript = """
@@ -110,7 +123,7 @@ public enum RemoteInstall {
             raise
     """
 
-    // Only explicit collector operations occur here; provider hooks and state directories are untouched.
+    // Only explicit install operations occur here; provider hook configuration and collector state are preserved.
     private static let prepareScript = lockScript + "\n" + """
     target,stage=sys.argv[1:]
     os.makedirs(os.path.dirname(target),mode=0o755,exist_ok=True)
@@ -139,6 +152,12 @@ public enum RemoteInstall {
     target,stage=sys.argv[1:]
     with stage_lock(stage):
         subprocess.run([target,'snapshot','--json'],check=True)
+    """
+    private static let refreshObserverScript = lockScript + "\n" + """
+    import subprocess
+    target,stage=sys.argv[1:]
+    with stage_lock(stage):
+        subprocess.run([target,'refresh-observer','--json'],check=True)
     """
     private static let promoteScript = lockScript + "\n" + """
     import hashlib,json,shutil

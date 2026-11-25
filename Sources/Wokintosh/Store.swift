@@ -376,6 +376,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
     var offlineCount: Int { feeds.values.filter { $0.error != nil }.count }
     var collectorURL: URL? { Bundle.main.url(forResource: "wokintosh_agent", withExtension: "py") }
+    lazy var bundledCollectorInfo:CollectorInfo? = {
+        guard let url=collectorURL,let source=try? Data(contentsOf:url) else{return nil}
+        return BundledCollector.info(source:source)
+    }()
 
     func refresh() async {
         native.refreshCalendarAuthorization()

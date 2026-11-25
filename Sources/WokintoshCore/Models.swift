@@ -36,10 +36,11 @@ public struct SystemReading: Codable, Equatable, Sendable {
 public struct Snapshot: Codable, Equatable, Sendable {
     public var schemaVersion: Int; public var host: HostInfo; public var generatedAt: Date; public var sessions: [AgentSession]; public var system: SystemReading; public var errors: [String]?
     public var sharedSources:SharedSourcesSnapshot?
-    public init(schemaVersion:Int,host:HostInfo,generatedAt:Date,sessions:[AgentSession],system:SystemReading,errors:[String]?=nil,sharedSources:SharedSourcesSnapshot?=nil) {
-        self.schemaVersion=schemaVersion;self.host=host;self.generatedAt=generatedAt;self.sessions=sessions;self.system=system;self.errors=errors;self.sharedSources=sharedSources
+    public var collector:CollectorInfo?
+    public init(schemaVersion:Int,host:HostInfo,generatedAt:Date,sessions:[AgentSession],system:SystemReading,errors:[String]?=nil,sharedSources:SharedSourcesSnapshot?=nil,collector:CollectorInfo?=nil) {
+        self.schemaVersion=schemaVersion;self.host=host;self.generatedAt=generatedAt;self.sessions=sessions;self.system=system;self.errors=errors;self.sharedSources=sharedSources;self.collector=collector
     }
-    private enum CodingKeys:String,CodingKey {case schemaVersion,host,generatedAt,sessions,system,errors,sharedSources}
+    private enum CodingKeys:String,CodingKey {case schemaVersion,host,generatedAt,sessions,system,errors,sharedSources,collector}
     public init(from decoder:Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         schemaVersion=try c.decode(Int.self,forKey:.schemaVersion);host=try c.decode(HostInfo.self,forKey:.host)
@@ -47,6 +48,8 @@ public struct Snapshot: Codable, Equatable, Sendable {
         system=try c.decode(SystemReading.self,forKey:.system);errors=try c.decodeIfPresent([String].self,forKey:.errors)
         let publication=try? c.decodeIfPresent(SharedSourcesSnapshot.self,forKey:.sharedSources)
         sharedSources=publication?.isValid == true ? publication : nil
+        let info=try? c.decode(CollectorInfo.self,forKey:.collector)
+        collector=info?.isValid == true ? info : nil
     }
     public static func decode(_ data: Data) throws -> Snapshot {
         guard data.count <= 16 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }

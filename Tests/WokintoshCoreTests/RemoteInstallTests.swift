@@ -12,7 +12,7 @@ final class RemoteInstallTests: XCTestCase {
         XCTAssertEqual(result.snapshot.host.id, "fixture-host")
         XCTAssertEqual(result.collectorPath, "/home/fixture user/.local/bin/wokintosh-agent")
         XCTAssertEqual(result.pythonVersion, "3.12.1")
-        XCTAssertEqual(fixture.commands.map(\.executable), ["/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/scp", "/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/ssh"])
+        XCTAssertEqual(fixture.commands.map(\.executable), ["/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/scp", "/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/ssh", "/usr/bin/ssh"])
         let scp = fixture.commands[2]
         XCTAssertTrue(scp.arguments.contains("-B"))
         XCTAssertTrue(scp.arguments.contains("-oBatchMode=yes"))
@@ -27,6 +27,15 @@ final class RemoteInstallTests: XCTestCase {
             XCTAssertLessThanOrEqual(command.maxBytes, 16 * 1024 * 1024)
             XCTAssertTrue(command.arguments.contains("-oStrictHostKeyChecking=yes"))
         }
+    }
+
+    func testObserverRefreshFailureLeavesVerifiedCollectorInstalledAndReportsWarning() throws {
+        let fixture=Fixture(snapshot:snapshot)
+        fixture.failAt=6
+        let result=try RemoteInstall.run(destination:"host",collectorPath:"~/bin/agent",localCollectorPath:"/tmp/collector",runner:{try fixture.run($0)})
+        XCTAssertEqual(result.snapshot.host.id,"fixture-host")
+        XCTAssertTrue(try XCTUnwrap(result.cleanupWarning).contains("observer"))
+        XCTAssertFalse(fixture.commands.contains{$0.arguments.last!.contains("os.replace(backup,target)")})
     }
 
     func testUnsupportedPythonNeverTransfersOrCreatesRemoteFolders() {
@@ -97,6 +106,8 @@ final class RemoteInstallTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: backup)), fixture.previous)
         XCTAssertTrue(try String(contentsOf: fixture.target, encoding: .utf8).hasPrefix("#!/usr/bin/python3\n"))
         XCTAssertEqual(try Data(contentsOf: fixture.settings), fixture.settingsContents)
+        XCTAssertNil(result.cleanupWarning)
+        XCTAssertTrue(FileManager.default.fileExists(atPath:fixture.observerRefresh.path))
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: fixture.target.deletingLastPathComponent().path).contains { $0.hasPrefix(".wokintosh-install-") })
     }
 
@@ -140,6 +151,7 @@ final class RemoteInstallTests: XCTestCase {
         let source: URL
         let target: URL
         let settings: URL
+        let observerRefresh: URL
         let previous = Data("#!/usr/bin/env python3\n# previous collector\n".utf8)
         let settingsContents = Data("existing provider hooks and state must be preserved".utf8)
         var firstCommand = true
@@ -154,10 +166,22 @@ final class RemoteInstallTests: XCTestCase {
             source = directory.appendingPathComponent("bundled collector.py")
             target = directory.appendingPathComponent("bin/agent")
             settings = directory.appendingPathComponent(".codex/config.toml")
+            observerRefresh = directory.appendingPathComponent("observer-refreshed")
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
             let json = String(data: snapshot, encoding: .utf8)!
-            try Data(("#!/usr/bin/env python3\nprint(" + "\"" + json.replacingOccurrences(of: "\"", with: "\\\"") + "\"" + ")\n").utf8).write(to: source)
+            let encoder=JSONEncoder();encoder.outputFormatting = .withoutEscapingSlashes
+            let marker=String(data:try encoder.encode(observerRefresh.path),encoding:.utf8)!
+            let body="""
+            #!/usr/bin/env python3
+            import sys
+            if len(sys.argv)>1 and sys.argv[1]=='refresh-observer':
+                open(\(marker),'w').write('updated')
+                print('{"status":"updated"}')
+            else:
+                print(\(String(data:try encoder.encode(json),encoding:.utf8)!))
+            """
+            try Data(body.utf8).write(to:source)
             try previous.write(to: target)
             try settingsContents.write(to: settings)
         }
@@ -241,6 +265,7 @@ final class RemoteInstallTests: XCTestCase {
             commands.append(command)
             if index == failAt || index == alsoFailAt { throw RunnerError.failed("Fixture command failure") }
             if index == 0 { return probe }
+            if command.arguments.last!.contains("refresh-observer") { return Data(#"{"status":"current"}"#.utf8) }
             if command.arguments.last!.contains("os.replace(candidate,target)") { return Data("{\"backupPath\":null}".utf8) }
             if command.arguments.last!.contains("subprocess.run") || command.arguments.last!.hasSuffix(" snapshot --json") { return snapshot }
             return Data()

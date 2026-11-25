@@ -108,11 +108,14 @@ struct MachinesSettingsView: View {
                 Text("Agents and System are collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust. Macs can also share Now Playing and selected calendars through Wokintosh 1.3.")
                     .font(.caption).foregroundStyle(.secondary)
                 machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
+                if store.collectorUpdate(for:store.feeds["local"]) == .observerUpdateAvailable {
+                    Text("Update existing local observers using Enable / Update Hooks below.").font(.caption).foregroundStyle(.orange)
+                }
                 ForEach(store.document.remoteHosts) { host in
                     VStack(alignment: .leading, spacing: 8) {
                         machineRow(name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
                         HStack {
-                            Button("Install / Update…") { pendingInstall = host }
+                            Button(store.collectorUpdate(for:store.feeds[host.id.uuidString])?.needsUpdate == true ? "Update…" : "Install / Update…") { pendingInstall = host }
                                 .help("Upload the bundled collector to this machine’s saved path")
                                 .accessibilityLabel("Install or update \(host.name)")
                             Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
@@ -140,7 +143,7 @@ struct MachinesSettingsView: View {
                 }
                 Text("Install copies this app’s collector with SCP and verifies Python 3.10+ and a working snapshot. Connect Existing only verifies a collector you already installed. Set up SSH keys and host trust in Terminal first.")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("Observer hooks are optional and configured on each machine separately. Installing a collector preserves its state and existing hook settings.")
+                Text("Updates are available when a connected machine differs from this app’s bundled collector. Older collectors cannot report their version. Installing preserves state and hook settings, and refreshes an existing Wokintosh-managed observer copy with a backup. New hooks are enabled separately.")
                     .font(.caption).foregroundStyle(.secondary)
                 if working {
                     HStack(spacing: 8) {
@@ -184,7 +187,7 @@ struct MachinesSettingsView: View {
             Button("Cancel", role: .cancel) { pendingInstall = nil }
         } message: {
             if let host = pendingInstall {
-                Text("Copy the bundled collector to \(host.collectorPath) on \(host.destination). If a file already exists there, keep a backup beside it before replacing it. Restore the previous collector if verification fails. Existing collector state and hook settings are preserved.")
+                Text("Copy the bundled collector to \(host.collectorPath) on \(host.destination). If a file already exists there, keep a backup beside it before replacing it. Restore the previous collector if verification fails. Existing collector state and hook settings are preserved. An existing Wokintosh-managed status observer is also updated with a backup; no new hooks are enabled.")
             }
         }
         .confirmationDialog("Enable or update observers on This Mac?", isPresented: Binding(
@@ -211,6 +214,10 @@ struct MachinesSettingsView: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary)
                 Text(!enabled ? "Disabled" : (feed?.error ?? (feed?.connected == true ? "Connected" : "Waiting for collector")))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                if enabled,let update=store.collectorUpdate(for:feed) {
+                    Text(((feed?.snapshot?.collector?.version).map{"Collector \($0) · "} ?? "") + update.message)
+                        .font(.caption).foregroundStyle(update.needsUpdate || update == .observerUnavailable ? Color.orange : Color.secondary)
+                }
             }
         }
     }
@@ -244,6 +251,7 @@ struct MachinesSettingsView: View {
                 saveConnectedHost(host, snapshot: result.snapshot)
                 var details = "Installed and verified on \(host.name) using Python \(result.pythonVersion)."
                 if let backup = result.backupPath { details += " Previous collector: \(backup)" }
+                if let backup=result.observerBackupPath { details += " Previous status observer: \(backup)" }
                 if let warning = result.cleanupWarning { details += " \(warning)" }
                 if store.settingsTab == .machines { message = details }
             } catch { report("Could Not Install on \(host.name)", error.localizedDescription) }

@@ -8,6 +8,8 @@ SSH keys and host trust must already work from Terminal. Wokintosh uses batch mo
 
 The collector requires Python 3.10 or later on macOS or Linux. Installation checks the actual version in the noninteractive SSH environment. A compatible `python3` keeps priority; otherwise it searches versioned executables in PATH, standard installation directories, Homebrew version-specific prefixes and Python.org frameworks. The installed collector is pinned to the selected absolute interpreter, without changing PATH or Python symlinks. Local collection uses the same discovery, off the UI thread. If Python was missing and you have just installed it, allow 30 seconds before retrying.
 
+Collectors in 2.0.1 and later report optional protocol-v1 metadata containing a display version, a code fingerprint, and the status of an existing Wokintosh-managed observer copy. Fingerprints ignore the installer-pinned interpreter line. Machines shows current, update available, newer, or version unknown; offline machines are not counted as available updates. A newer remote collector is not recommended for downgrade. Updating a remote collector also refreshes its existing private managed observer copy with a backup, without changing hook configuration or trust. Unknown or unsafe observer files are left in place and the app reports a warning.
+
 An existing collector is backed up during an update. Hooks and collector state are retained. **Connect Existing Collector** verifies an installation you already maintain. The collector-file export is an advanced fallback; it is not required for the SSH installer.
 
 ## Optional lifecycle hooks
@@ -27,6 +29,8 @@ Read-only transcript discovery works without changing agent settings. For reliab
 ```
 
 Consolidation validates the migration first and backs up the original files. Unrelated observers, matchers and settings are preserved. Unsupported or ambiguous data is refused before settings are changed. Existing Wokintosh hooks from earlier script versions are updated without adding duplicate observers; collector state is retained. Lifecycle events remain separate entries for Codex trust review. The collector stores bounded summaries in the platform's Wokintosh state directory, not full transcripts. Provider formats can change; unfamiliar or stale lifecycle state remains unknown rather than inventing progress.
+
+Codex hooks with an explicitly null `transcript_path` describe nonpersistent runs, such as ambient suggestion jobs. Wokintosh classifies these as helpers, controlled by **Show Helpers**. Omitted or malformed fields do not establish that classification; saved transcript metadata takes precedence. Historical summaries did not retain this signal, so old temporary Done notices may require a one-time review. On Macs using local observers, run **Enable / Update Codex Hooks** after the app update; remote Install / Update also refreshes an existing managed observer copy. Advanced manual installations can run `wokintosh-agent refresh-observer --json` to refresh that copy explicitly without changing provider settings.
 
 The initial collector bounds discovery to recent files and caches unchanged parses. It is intended for an ambient view of active work, not a complete searchable transcript archive.
 

@@ -44,6 +44,11 @@ struct DashboardCanvas: View {
             Button("Wokintosh") { store.showEditor?() }.buttonStyle(.plain).font(barFont(23)).help("Edit dashboard")
             Spacer()
             UpdateReminder(updates:store.updates)
+            if store.collectorUpdateCount > 0 {
+                Button("\(store.collectorUpdateCount) collector \(store.collectorUpdateCount == 1 ? "update" : "updates")") {store.openSettings(.machines)}
+                    .buttonStyle(.plain).font(barFont(16)).foregroundStyle(.orange)
+                    .help("Review collector updates in Machines")
+            }
             if store.document.previewMode { Text("PREVIEW").font(barFont(16)).foregroundStyle(.orange) }
             if store.offlineCount > 0 && !store.document.previewMode { Text("\(store.offlineCount) disconnected").font(barFont(16)).foregroundStyle(.orange) }
             Spacer()
