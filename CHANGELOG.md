@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.5 — 2026-11-24
+
+- Add Update All in Machines for pending collector and existing local status-observer updates, processed one machine at a time.
+- Show live update stages beside each machine and above the list, with waiting states and persistent success, warning and failure results. Batch updates continue after a machine fails.
+- Collector code and the iPhone/iPad companion are unchanged from 2.0.4.
+
 ## 2.0.4 — 2026-11-24
 
 - Use compatible Linux process-probe arguments so positive writer evidence can keep quiet background jobs Working.

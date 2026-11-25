@@ -93,29 +93,62 @@ struct ConnectionStatusLabel: View {
 @MainActor
 struct MachinesSettingsView: View {
     @ObservedObject var store: DashboardStore
+    @ObservedObject private var installation: CollectorInstallationController
     @State private var machineName = ""
     @State private var destination = ""
     @State private var collectorPath = "~/.local/bin/wokintosh-agent"
     @State private var message: String?
     @State private var confirmHooks: String?
-    @State private var pendingInstall: RemoteHost?
-    @State private var working = false
+    @State private var pendingInstalls: [CollectorInstallationTarget] = []
+    @State private var otherWorking = false
     @State private var progress = ""
+
+    init(store: DashboardStore) {
+        self.store = store
+        installation = store.collectorInstallation
+    }
+
+    private var working: Bool { otherWorking || installation.isRunning }
 
     var body: some View {
         Form {
             Section("Machines") {
                 Text("Agents and System are collected automatically. Add another Mac or Linux machine using its existing SSH keys and host trust. Macs can also share Now Playing and selected calendars through Wokintosh 1.3.")
                     .font(.caption).foregroundStyle(.secondary)
-                machineRow(name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
+                HStack {
+                    Text("Collector updates").font(.headline)
+                    Spacer()
+                    Button("Update All") { pendingInstalls = store.collectorInstallationTargets }
+                        .disabled(working || store.collectorInstallationTargets.isEmpty)
+                        .help("Update connected machines with an available update, including existing local status observers")
+                }
+                if !installation.entries.isEmpty {
+                    CollectorInstallationActivityView(installation: installation)
+                }
+                if otherWorking {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(progress).font(.caption)
+                    }.accessibilityElement(children: .combine)
+                }
+                if let message {
+                    HStack(alignment: .top) {
+                        Text(message).font(.caption).textSelection(.enabled)
+                        Spacer()
+                        Button { self.message = nil } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).accessibilityLabel("Dismiss machine information")
+                    }
+                }
+                machineRow(id: "local", name: "This Mac", detail: "Local collector", feed: store.feeds["local"])
                 if store.collectorUpdate(for:store.feeds["local"]) == .observerUpdateAvailable {
-                    Text("Update existing local observers using Enable / Update Hooks below.").font(.caption).foregroundStyle(.orange)
+                    Button("Update Status Observer…") { pendingInstalls = [.localObserver] }
+                        .disabled(working)
                 }
                 ForEach(store.document.remoteHosts) { host in
                     VStack(alignment: .leading, spacing: 8) {
-                        machineRow(name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
+                        machineRow(id: host.id.uuidString, name: host.name, detail: host.destination, feed: store.feeds[host.id.uuidString], enabled: host.enabled)
                         HStack {
-                            Button(store.collectorUpdate(for:store.feeds[host.id.uuidString])?.needsUpdate == true ? "Update…" : "Install / Update…") { pendingInstall = host }
+                            Button(installation.activeTarget?.id == host.id.uuidString ? "Updating…" : store.collectorUpdate(for:store.feeds[host.id.uuidString])?.needsUpdate == true ? "Update…" : "Install / Update…") { pendingInstalls = [.remote(host)] }
                                 .help("Upload the bundled collector to this machine’s saved path")
                                 .accessibilityLabel("Install or update \(host.name)")
                             Button("Remove", role: .destructive) { store.document.remoteHosts.removeAll { $0.id == host.id } }
@@ -129,7 +162,7 @@ struct MachinesSettingsView: View {
                 TextField("SSH alias or user@host", text: $destination)
                 TextField("Remote collector path", text: $collectorPath)
                 VStack(alignment: .leading, spacing: 8) {
-                    Button("Install / Update over SSH…") { if let host = formHost() { pendingInstall = host } }
+                    Button("Install / Update over SSH…") { if let host = formHost() { pendingInstalls = [.remote(host)] } }
                         .buttonStyle(.borderedProminent)
                         .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
                     HStack {
@@ -145,20 +178,6 @@ struct MachinesSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Updates are available when a connected machine differs from this app’s bundled collector. Older collectors cannot report their version. Installing preserves state and hook settings, and refreshes an existing Wokintosh-managed observer copy with a backup. New hooks are enabled separately.")
                     .font(.caption).foregroundStyle(.secondary)
-                if working {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(progress).font(.caption).foregroundStyle(.secondary)
-                    }.accessibilityElement(children: .combine)
-                }
-                if let message {
-                    HStack(alignment: .top) {
-                        Text(message).font(.caption).textSelection(.enabled)
-                        Spacer()
-                        Button { self.message = nil } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).accessibilityLabel("Dismiss machine information")
-                    }
-                }
                 Button { Task { await store.refresh() } } label: { Label("Refresh Machines", systemImage: "arrow.clockwise") }
                     .disabled(store.refreshing || working)
             }
@@ -177,24 +196,35 @@ struct MachinesSettingsView: View {
         .formStyle(.grouped)
         .onChange(of: store.settingsTab) { _, tab in if tab != .machines { message = nil } }
         .textFieldStyle(.roundedBorder)
-        .confirmationDialog("Install or update the remote collector?", isPresented: Binding(
-            get: { pendingInstall != nil }, set: { if !$0 { pendingInstall = nil } }
+        .confirmationDialog(pendingInstalls.count > 1 ? "Update all collectors?" : "Install or update the collector?", isPresented: Binding(
+            get: { !pendingInstalls.isEmpty }, set: { if !$0 { pendingInstalls = [] } }
         ), titleVisibility: .visible) {
-            Button("Install / Update over SSH") {
-                if let host = pendingInstall { install(host) }
-                pendingInstall = nil
+            Button(pendingInstalls.count > 1 ? "Update All" : pendingInstalls.first == .localObserver ? "Update Status Observer" : "Install / Update over SSH") {
+                install(pendingInstalls)
+                pendingInstalls = []
             }
-            Button("Cancel", role: .cancel) { pendingInstall = nil }
+            Button("Cancel", role: .cancel) { pendingInstalls = [] }
         } message: {
-            if let host = pendingInstall {
+            if pendingInstalls.count > 1 {
+                Text("Update \(pendingInstalls.map(\.name).joined(separator: ", ")) one machine at a time. Existing collectors and managed status observers are backed up before replacement. Each remote collector is verified, with rollback if verification fails. Hook settings and session state are preserved; new hooks are enabled separately.")
+            } else if case .remote(let host)? = pendingInstalls.first {
                 Text("Copy the bundled collector to \(host.collectorPath) on \(host.destination). If a file already exists there, keep a backup beside it before replacing it. Restore the previous collector if verification fails. Existing collector state and hook settings are preserved. An existing Wokintosh-managed status observer is also updated with a backup; no new hooks are enabled.")
+            } else {
+                Text("Back up and refresh the existing Wokintosh-managed status observer on This Mac. Existing hook settings and session state are preserved.")
             }
         }
         .confirmationDialog("Enable or update observers on This Mac?", isPresented: Binding(
             get: { confirmHooks != nil }, set: { if !$0 { confirmHooks = nil } }
         ), titleVisibility: .visible) {
             Button("Enable / Update \(confirmHooks == "codex" ? "Codex" : "Claude Code") Hooks") {
-                if let provider = confirmHooks { Task { await store.installHooks(provider: provider) } }
+                if let provider = confirmHooks {
+                    otherWorking = true
+                    progress = "Updating \(provider == "codex" ? "Codex" : "Claude Code") observers on This Mac…"
+                    Task {
+                        defer { otherWorking = false; progress = "" }
+                        await store.installHooks(provider: provider)
+                    }
+                }
                 confirmHooks = nil
             }
             Button("Cancel", role: .cancel) { confirmHooks = nil }
@@ -205,7 +235,7 @@ struct MachinesSettingsView: View {
         }
     }
 
-    private func machineRow(name: String, detail: String, feed: FeedStatus?, enabled: Bool = true) -> some View {
+    private func machineRow(id: String, name: String, detail: String, feed: FeedStatus?, enabled: Bool = true) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: feed?.connected == true && enabled ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(feed?.connected == true && enabled ? Color.green : Color.secondary)
@@ -217,6 +247,9 @@ struct MachinesSettingsView: View {
                 if enabled,let update=store.collectorUpdate(for:feed) {
                     Text(((feed?.snapshot?.collector?.version).map{"Collector \($0) · "} ?? "") + update.message)
                         .font(.caption).foregroundStyle(update.needsUpdate || update == .observerUnavailable ? Color.orange : Color.secondary)
+                }
+                if let entry = installation.entry(for: id) {
+                    CollectorInstallationStatusView(entry: entry)
                 }
             }
         }
@@ -236,35 +269,38 @@ struct MachinesSettingsView: View {
         return host
     }
 
-    private func install(_ host: RemoteHost) {
+    private func install(_ targets: [CollectorInstallationTarget]) {
         guard !working else { return }
         guard let collector = store.collectorURL else { report("Collector Unavailable", "The app’s bundled collector is missing. Reinstall Wokintosh, then retry."); return }
-        working = true
         message = nil
-        progress = "Checking SSH…"
         Task {
-            defer { working = false; progress = "" }
-            do {
-                let result = try await RemoteInstaller.install(host: host, collectorURL: collector) { value in
-                    Task { @MainActor in progress = value }
+            await installation.run(targets) { target, updateProgress in
+                switch target {
+                case .localObserver:
+                    updateProgress("Updating the existing status observer on This Mac…")
+                    return try await store.refreshLocalObserver()
+                case .remote(let host):
+                    let result = try await RemoteInstaller.install(host: host, collectorURL: collector) { value in
+                        Task { @MainActor in updateProgress(value) }
+                    }
+                    saveConnectedHost(host, snapshot: result.snapshot)
+                    var details = "Installed and verified on \(host.name) using Python \(result.pythonVersion)."
+                    if let backup = result.backupPath { details += " Previous collector: \(backup)" }
+                    if let backup = result.observerBackupPath { details += " Previous status observer: \(backup)" }
+                    if let warning = result.cleanupWarning { details += " \(warning)" }
+                    return CollectorInstallationOutcome(details: details, hasWarning: result.cleanupWarning != nil)
                 }
-                saveConnectedHost(host, snapshot: result.snapshot)
-                var details = "Installed and verified on \(host.name) using Python \(result.pythonVersion)."
-                if let backup = result.backupPath { details += " Previous collector: \(backup)" }
-                if let backup=result.observerBackupPath { details += " Previous status observer: \(backup)" }
-                if let warning = result.cleanupWarning { details += " \(warning)" }
-                if store.settingsTab == .machines { message = details }
-            } catch { report("Could Not Install on \(host.name)", error.localizedDescription) }
+            }
         }
     }
 
     private func connect(_ host: RemoteHost) {
         guard !working else { return }
-        working = true
+        otherWorking = true
         message = nil
         progress = "Checking the existing collector over SSH…"
         Task {
-            defer { working = false; progress = "" }
+            defer { otherWorking = false; progress = "" }
             do {
                 let snapshot = try await RemoteInstaller.connect(host: host)
                 saveConnectedHost(host, snapshot: snapshot)

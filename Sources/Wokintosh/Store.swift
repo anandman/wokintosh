@@ -30,6 +30,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     let sharing:SourceSharing
     let publisher:WidgetPublisher
     let updates = UpdateController()
+    let collectorInstallation = CollectorInstallationController()
     let dataDirectory: URL
     private var layoutNeedsBackup=false
     private var saveTask: Task<Void, Never>?
@@ -441,6 +442,24 @@ enum SettingsTab: String, CaseIterable, Identifiable {
                 else { var previous = feeds[id] ?? FeedStatus(name: name); previous.error=error; previous.refreshedAt=Date(); feeds[id]=previous }
             }
         }
+    }
+
+    func refreshLocalObserver() async throws -> CollectorInstallationOutcome {
+        guard let python = await localPython.path(), let collector = collectorURL else {
+            throw RunnerError.failed("Install Python 3.10 or later and check that the app’s bundled collector is available.")
+        }
+        struct Result: Decodable { var status: String; var backupPath: String? }
+        let data = try await Task.detached(priority: .utility) {
+            try CommandRunner.run(python, arguments: [collector.path, "refresh-observer", "--json"], timeout: 10)
+        }.value
+        let result = try JSONDecoder().decode(Result.self, from: data)
+        guard ["updated", "current", "notInstalled"].contains(result.status) else {
+            throw RunnerError.failed("The status observer returned an unknown update status.")
+        }
+        feeds["local"]?.snapshot?.collector?.observerStatus = result.status == "notInstalled" ? "notInstalled" : "current"
+        var details = result.status == "notInstalled" ? "No managed status observer is installed." : "Existing status observer is up to date."
+        if let backup = result.backupPath { details += " Previous status observer: \(backup)" }
+        return CollectorInstallationOutcome(details: details)
     }
 
     func installHooks(provider: String) async {

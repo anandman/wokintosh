@@ -23,6 +23,13 @@ extension DashboardStore {
     }
     var collectorUpdateCount:Int {collectorUpdateTargets.count}
 
+    var collectorInstallationTargets:[CollectorInstallationTarget] {
+        collectorUpdateTargets.compactMap { target in
+            if target.id == "local" { return target.update == .observerUpdateAvailable ? .localObserver : nil }
+            return document.remoteHosts.first(where: { $0.id.uuidString == target.id }).map { .remote($0) }
+        }
+    }
+
     private var collectorUpdateTargets:[(id:String,name:String,info:CollectorInfo?,update:CollectorUpdate)] {
         guard !document.previewMode else{return []}
         var targets:[(id:String,name:String,info:CollectorInfo?,update:CollectorUpdate)]=[]
