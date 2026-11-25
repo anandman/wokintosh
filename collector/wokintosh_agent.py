@@ -27,7 +27,7 @@ import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
-COLLECTOR_VERSION = '2.0.3'
+COLLECTOR_VERSION = '2.0.4'
 MAX_COLLECTOR_BYTES = 1024 * 1024
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -385,7 +385,7 @@ def background_file_is_open(path, timeout):
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
             return False
         linux = platform.system() == 'Linux'
-        args = [utility, '--', str(path)] if linux else [utility, '-Fpa', '--', str(path)]
+        args = [utility, str(path.resolve())] if linux else [utility, '-Fpa', '--', str(path)]
         result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                 text=True, timeout=timeout, check=False)
         if result.returncode != 0:

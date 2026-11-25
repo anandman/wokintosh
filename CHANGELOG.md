@@ -1,7 +1,8 @@
 # Changelog
 
-## 2.0.3 — 2026-11-24
+## 2.0.4 — 2026-11-24
 
+- Use compatible Linux process-probe arguments so positive writer evidence can keep quiet background jobs Working.
 - Track Claude and Codex background-task lifecycles separately from foreground responses, keeping finite background work from becoming false Done notices. Missing or stale evidence is reported as unverified.
 - Add per-runner Automatic, Work and Monitor controls through the Mac right-click and mobile app long-press menus. Choices are shared by the publishing Mac and excluded from setup exports.
 - Show Monitoring below Working on the Mac, iPhone/iPad app and widgets, including when inactive sessions are hidden. Monitor lifecycle updates do not create repeated Done notices.
