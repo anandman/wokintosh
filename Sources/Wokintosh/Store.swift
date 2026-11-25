@@ -20,6 +20,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     @Published var selectedID: UUID?
     @Published var feeds: [String: FeedStatus] = [:]
     @Published var refreshing = false
+    @Published var backgroundTaskRoles=BackgroundTaskRoleStore()
     var presentMessage: ((AppMessage) -> Void)?
     private var startupMessage: AppMessage?
     var collectorNotificationReceipts:[String]?
@@ -67,6 +68,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         loaded.repairGeometry()
         if arguments.contains("--preview") { loaded.previewMode = true }
         document = loaded
+        if let data=try? Data(contentsOf:dataDirectory.appendingPathComponent("background-task-roles.json")),data.count<=1024*1024,
+           let roles=try? JSONDecoder().decode(BackgroundTaskRoleStore.self,from:data) {backgroundTaskRoles=roles}
         startupMessage=loadNotice.map { AppMessage(title:"Saved Layout Could Not Be Read",message:$0,isError:true) }
         selectedID = loaded.widgets.first?.id
         native.updateWidgets(loaded.widgets)
@@ -233,7 +236,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         for feed in feeds.values {
             guard let snapshot=feed.snapshot else { continue }
             for session in snapshot.sessions {
-                let row=SessionRow(hostID:snapshot.host.id,hostName:feed.displayName,session:session,connected:feed.connected)
+                let row=backgroundTaskRoles.applying(to:SessionRow(hostID:snapshot.host.id,hostName:feed.displayName,session:session,connected:feed.connected),at:Date())
                 if let old=rows[row.id],old.connected && !row.connected { continue }
                 rows[row.id]=row
             }
@@ -264,6 +267,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             if let provider=widget.provider,provider != row.session.provider { return false }
             if !widget.showHelpers && (row.session.isHelper || row.session.parentId != nil) { return false }
             if row.completionPending || row.session.state == .blocked || row.session.goalBlocked == true || isManuallyBlocked(row) { return true }
+            if row.session.isMonitoring || !(row.session.background?.activeTasks.isEmpty ?? true) {return true}
             let age=Date().timeIntervalSince(row.session.updatedAt)
             if !widget.showFinished && (row.session.state == .finished || row.session.state == .idle || (row.session.state == .unknown && age>7200)) { return false }
             return !widget.showFinished || age<86400

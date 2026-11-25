@@ -15,6 +15,49 @@ private struct StoreTestClient:PhoneFetching {
     }
 }
 final class PhoneStoreTests:XCTestCase {
+    @MainActor func testBackgroundTaskSheetBuildsQualifiedRoleCommandWithoutOpeningProvider()throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let credentials=StoreTestCredentials();credentials.value=try pairing()
+        let now=Date(),task=BackgroundTask(id:"runner",kind:"shell",label:"Inbox poller",status:.running,startedAt:now,updatedAt:now,observedAt:now)
+        let session=AgentSession(id:"example",provider:"codex",title:"Example",project:"example",state:.working,updatedAt:now,background:BackgroundTaskEvidence(foregroundState:.finished,foregroundUpdatedAt:now,tasks:[task]))
+        var agents=PublishedAgents.make(rows:[SessionRow(hostID:"host",hostName:"Mac",session:session)],sourceObservations:["host":now],interval:.untilReviewed,showFinished:false,at:now)
+        agents.rows[0].backgroundControls=PublishedBackgroundControls(revision:String(repeating:"a",count:64),taskIDs:["runner"])
+        let widget=PublishedWidget(id:UUID(),name:"Agents",agents:agents)
+        let feed=PublishedWidgetFeed(publisherID:UUID(),publisherName:"Mac",publishedAt:now,widgets:[widget])
+        let cache=PhoneSnapshotCache(directory:root);try cache.store(feed,fetchedAt:now)
+        let store=PhoneStore(repository:PhoneRepository(cache:cache,credentials:credentials,client:StoreTestClient(feed:feed)),launch:{_,_ in XCTFail("Managing a task must not open the provider")})
+        store.showBackgroundTasks(agents.rows[0])
+        XCTAssertEqual(store.sessionPanel,.backgroundTasks)
+        XCTAssertEqual(store.selectedSession?.id,agents.rows[0].id)
+        let displayed=try XCTUnwrap(store.selectedSession),displayedTask=try XCTUnwrap(displayed.session.background?.tasks.first)
+        let command=try XCTUnwrap(store.backgroundRoleCommand(.monitor,task:displayedTask,row:displayed))
+        XCTAssertEqual(command.publisherID,feed.publisherID);XCTAssertEqual(command.widgetID,widget.id)
+        XCTAssertEqual(command.taskID,"runner");XCTAssertEqual(command.taskRole,.monitor);XCTAssertTrue(command.isValid)
+        var missing=displayedTask;missing.id="missing"
+        XCTAssertNil(store.backgroundRoleCommand(.monitor,task:missing,row:displayed))
+    }
+    @MainActor func testStaleTaskPickerCannotAcquireAReplacementRunnersReceipt()throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let credentials=StoreTestCredentials();credentials.value=try pairing()
+        let now=Date(),task=BackgroundTask(id:"runner",kind:"shell",label:"Poller",status:.running,startedAt:now,updatedAt:now,observedAt:now)
+        let session=AgentSession(id:"example",provider:"codex",title:"Example",project:"example",state:.working,updatedAt:now,background:BackgroundTaskEvidence(foregroundState:.finished,foregroundUpdatedAt:now,tasks:[task]))
+        var agents=PublishedAgents.make(rows:[SessionRow(hostID:"host",hostName:"Mac",session:session)],sourceObservations:["host":now],interval:.untilReviewed,showFinished:false,at:now)
+        agents.rows[0].backgroundControls=PublishedBackgroundControls(revision:String(repeating:"a",count:64),taskIDs:["runner"])
+        let captured=agents.rows[0]
+        let widget=PublishedWidget(id:UUID(),name:"Agents",agents:agents)
+        var feed=PublishedWidgetFeed(publisherID:UUID(),publisherName:"Mac",publishedAt:now,widgets:[widget])
+        let cache=PhoneSnapshotCache(directory:root);try cache.store(feed,fetchedAt:now)
+        let store=PhoneStore(repository:PhoneRepository(cache:cache,credentials:credentials,client:StoreTestClient(feed:feed)))
+        var replacement=task;replacement.startedAt=now.addingTimeInterval(10)
+        var newSession=session;newSession.background?.tasks=[replacement]
+        var newRow=PublishedAgentRow(row:SessionRow(hostID:"host",hostName:"Mac",session:newSession),observedAt:now)
+        newRow.backgroundControls=PublishedBackgroundControls(revision:String(repeating:"b",count:64),taskIDs:["runner"])
+        feed.widgets[0].agents?.rows=[newRow];try cache.store(feed,fetchedAt:now)
+        store.showBackgroundTasks(newRow)
+        XCTAssertNil(store.backgroundRoleCommand(.monitor,task:task,row:captured))
+    }
     @MainActor func testLosingAuthorizationDismissesPrivateDetailAndItsActions() async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer {try? FileManager.default.removeItem(at:root)}

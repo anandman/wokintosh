@@ -21,13 +21,14 @@ public struct PublishedAgentRow:Codable,Equatable,Identifiable,Sendable {
     public let completionPending:Bool
     public let sourceObservedAt:Date?
     public var controls:PublishedAgentControls?=nil
+    public var backgroundControls:PublishedBackgroundControls?=nil
     public var id:String {SessionRow(hostID:hostID,hostName:hostName,session:session).id}
     public init(row:SessionRow,observedAt:Date?) {
         hostID=row.hostID;hostName=String(row.hostName.prefix(180))
         let source=row.session
         session=AgentSession(id:source.id,provider:source.provider,title:String(source.title.prefix(180)),
                              project:String((source.project as NSString).lastPathComponent.prefix(180)),state:source.state,
-                             updatedAt:source.updatedAt,isHelper:source.isHelper,goalBlocked:source.goalBlocked,openURLs:source.openURLs)
+                             updatedAt:source.updatedAt,isHelper:source.isHelper,goalBlocked:source.goalBlocked,openURLs:source.openURLs,background:source.background)
         connected=row.connected;completionPending=row.completionPending;sourceObservedAt=observedAt
     }
     public func freshness(at now:Date)->SourceFreshness {
@@ -37,7 +38,7 @@ public struct PublishedAgentRow:Codable,Equatable,Identifiable,Sendable {
         return .current
     }
     public var isValid:Bool {
-        (controls?.isValid ?? true) && !hostID.isEmpty && !session.id.isEmpty &&
+        (controls?.isValid ?? true) && (backgroundControls?.isValid ?? true) && (session.background?.isValid ?? true) && !hostID.isEmpty && !session.id.isEmpty &&
         [hostID,hostName,session.id,session.provider,session.title,session.project].allSatisfy{$0.utf8.count<=720 && $0.rangeOfCharacter(from:.controlCharacters)==nil} &&
         !session.project.contains("/") && session.activity==nil
     }

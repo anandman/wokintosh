@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Track Claude and Codex background-task lifecycles separately from foreground responses, keeping finite background work from becoming false Done notices. Missing or stale evidence is reported as unverified.
+- Add per-runner Automatic, Work and Monitor controls through the Mac right-click and mobile app long-press menus. Choices are shared by the publishing Mac and excluded from setup exports.
+- Show Monitoring below Working on the Mac, iPhone/iPad app and widgets, including when inactive sessions are hidden. Monitor lifecycle updates do not create repeated Done notices.
+
 ## 2.0.2 — 2026-11-24
 
 - Add a native collector-update popup with Review Updates and Later. Reminders cover remote collectors and local managed observers, and acknowledged updates stay quiet across refreshes and app relaunches.

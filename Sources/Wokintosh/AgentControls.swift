@@ -18,6 +18,14 @@ import WokintoshCore
     func bulk(_ rows:[PublishedAgentRow],widget:UUID)->String {
         digest("\(epoch)|\(widget)|"+rows.filter(\.completionPending).map{$0.id+":"+($0.controls?.revision ?? "")}.sorted().joined(separator:"|"))
     }
+    func backgroundRevision(_ row:PublishedAgentRow,widget:UUID)->String {
+        let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
+        var background=row.session.background
+        // Read-only liveness renewal is not a new task incarnation or role change.
+        if background != nil {for i in background!.tasks.indices {background!.tasks[i].observedAt=background!.tasks[i].updatedAt}}
+        let evidence=(try? encoder.encode(background)).map{String(decoding:$0,as:UTF8.self)} ?? "none"
+        return digest("\(epoch)|\(widget)|\(row.id)|\(row.connected)|\(evidence)|\(versions[row.id]?.uuidString ?? "initial")")
+    }
 }
 
 extension DashboardStore {
@@ -32,6 +40,8 @@ extension DashboardStore {
             if manual {allowed.append(.clearManualBlocked)}
             else if row.session.state != .blocked && row.session.goalBlocked != true {allowed.append(.markBlocked)}
             if !allowed.isEmpty {copy.controls=PublishedAgentControls(revision:agentControlAuthority.revision(row,widget:widgetID,manual:manual),allowed:allowed)}
+            let tasks=currentBackgroundTaskIDs(hostID:row.hostID,session:row.session).sorted()
+            if row.connected,!tasks.isEmpty {copy.backgroundControls=PublishedBackgroundControls(revision:agentControlAuthority.backgroundRevision(row,widget:widgetID),taskIDs:tasks)}
             return copy
         }
         agents.rows=agents.rows.map(decorate);agents.earlierRows=agents.earlierRows?.map(decorate)
@@ -57,6 +67,17 @@ extension DashboardStore {
         let feed=try PublishedWidgetFeed.decode(currentAgentFeed())
         guard let agents=feed.widgets.first(where:{$0.id==widget.id})?.agents else {throw AgentControlError.conflict}
         let represented=agents.rows+(agents.earlierRows ?? [])
+        if command.action == .setBackgroundTaskRole {
+            guard let row=represented.first(where:{$0.id==command.rowID}),
+                  let controls=row.backgroundControls,controls.revision==command.revision,
+                  let taskID=command.taskID,controls.taskIDs.contains(taskID),let role=command.taskRole,
+                  let current=rows(for:widget).first(where:{$0.id==row.id}) else {throw AgentControlError.conflict}
+            try setBackgroundTaskRole(role,taskID:taskID,row:current)
+            if agentControlAuthority.applied.count>=2048 {agentControlAuthority.applied.removeAll()}
+            agentControlAuthority.applied[command.id]=(command,now)
+            publishWidgets(at:now)
+            return try currentAgentFeed()
+        }
         let targets:[PublishedAgentRow]
         if command.action == .reviewAllDone {
             guard agents.controls?.revision==command.revision,agents.controls?.allowed.contains(.reviewAllDone)==true else {throw AgentControlError.conflict}
@@ -77,6 +98,7 @@ extension DashboardStore {
             case .reviewDone,.reviewAllDone,.reviewEarlierDone:next.completions.review(row.id)
             case .markBlocked:next.blockedSessions.mark(row);next.completions.review(row.id)
             case .clearManualBlocked:next.blockedSessions.clear(row.id)
+            case .setBackgroundTaskRole:throw AgentControlError.invalid
             }
         }
         // Persist the transaction before changing the dashboard or acknowledging it.

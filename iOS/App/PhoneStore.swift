@@ -4,6 +4,7 @@ import WidgetKit
 import WokintoshCore
 
 enum PhoneSettingsSheet:String,Identifiable {case scan,paste;var id:String {rawValue}}
+enum PhoneSessionPanel {case details,backgroundTasks}
 
 @MainActor final class PhoneStore:ObservableObject {
     @Published private(set) var snapshot=PhoneSnapshot.empty
@@ -14,6 +15,7 @@ enum PhoneSettingsSheet:String,Identifiable {case scan,paste;var id:String {rawV
         didSet {if selectedSession==nil {selectedRoute=nil;navigationMessage=nil;if oldValue != nil {pendingNavigation=nil}}}
     }
     @Published private(set) var navigationMessage:String?
+    @Published private(set) var sessionPanel=PhoneSessionPanel.details
     @Published var settingsVisible=false
     @Published var settingsSheet:PhoneSettingsSheet?
     private enum IncomingDestination {case widget(PhoneWidgetRoute),session(PhoneRoute),dashboard}
@@ -195,6 +197,14 @@ enum PhoneSettingsSheet:String,Identifiable {case scan,paste;var id:String {rawV
         guard let controls,controls.allowed.contains(action) else {return nil}
         return AgentControlCommand(publisherID:feed.publisherID,widgetID:widget.id,rowID:rowID,action:action,revision:controls.revision)
     }
+    func backgroundRoleCommand(_ role:BackgroundTaskRole,task:WokintoshCore.BackgroundTask,row displayed:PublishedAgentRow)->AgentControlCommand? {
+        guard snapshot.paired,snapshot.state != .offline,let feed=snapshot.feed,let widget=selectedWidget,
+              let row=(widget.agents?.rows ?? []).first(where:{$0.id==displayed.id}) ?? widget.agents?.earlierRows?.first(where:{$0.id==displayed.id}),
+              row.connected,let controls=row.backgroundControls,controls.revision==displayed.backgroundControls?.revision,
+              controls.taskIDs.contains(task.id),
+              row.session.background?.tasks.first(where:{$0.id==task.id})?.startedAt==task.startedAt else {return nil}
+        return AgentControlCommand(publisherID:feed.publisherID,widgetID:widget.id,rowID:row.id,action:.setBackgroundTaskRole,revision:controls.revision,taskID:task.id,taskRole:role)
+    }
     func perform(_ action:AgentControlAction,rowID:String?=nil)async {
         guard let command=controlCommand(action,rowID:rowID) else {message=AgentControlError.disabled.localizedDescription;return}
         await perform(command)
@@ -209,19 +219,20 @@ enum PhoneSettingsSheet:String,Identifiable {case scan,paste;var id:String {rawV
             WidgetCenter.shared.reloadAllTimelines()
         }
     }
-    func showSessionDetails(_ row:PublishedAgentRow) {
+    func showSessionDetails(_ row:PublishedAgentRow,panel:PhoneSessionPanel = .details) {
         guard let publisher=snapshot.feed?.publisherID,let widget=selectedWidget else {return}
         let route=PhoneRoute(publisherID:publisher,widgetID:widget.id,rowID:row.id)
         pendingNavigation=nil
         do {try readLatest()} catch {message=error.localizedDescription;return}
         guard snapshot.paired,let feed=snapshot.feed,let latest=route.resolve(in:feed) else {return}
-        showDetails(latest,route:route)
+        showDetails(latest,route:route,panel:panel)
     }
+    func showBackgroundTasks(_ row:PublishedAgentRow) {showSessionDetails(row,panel:.backgroundTasks)}
     func showEarlierDone() {
         guard let publisher=snapshot.feed?.publisherID,let widget=selectedWidget else {return}
         earlierSelection=PhoneWidgetRoute(publisherID:publisher,widgetID:widget.id)
     }
-    private func showDetails(_ row:PublishedAgentRow,route:PhoneRoute) {
-        selectedRoute=route;selectedSession=row;navigationMessage=nil
+    private func showDetails(_ row:PublishedAgentRow,route:PhoneRoute,panel:PhoneSessionPanel = .details) {
+        sessionPanel=panel;selectedRoute=route;selectedSession=row;navigationMessage=nil
     }
 }

@@ -39,7 +39,7 @@ struct PhoneRootView:View {
             }.refreshable {await store.refresh(acknowledgingActionError:true)}
         }.background(PhonePalette.desktop.ignoresSafeArea()).preferredColorScheme(.light)
             .sheet(isPresented:$store.settingsVisible,onDismiss:store.settingsDismissed) {PhoneSettingsView(store:store)}
-            .sheet(item:Binding(get:{store.earlierSelection==nil ? store.selectedSession : nil},set:{store.selectedSession=$0}),onDismiss:store.sessionDetailsDismissed) {row in PhoneSessionDetail(store:store,row:row)}
+            .sheet(item:Binding(get:{store.earlierSelection==nil ? store.selectedSession : nil},set:{store.selectedSession=$0}),onDismiss:store.sessionDetailsDismissed) {row in PhoneSessionSheet(store:store,row:row)}
             .sheet(item:$store.earlierSelection,onDismiss:store.earlierDoneDismissed) {selection in PhoneEarlierDoneView(store:store,selection:selection)}
             .alert("Wokintosh",isPresented:Binding(get:{!store.settingsVisible && store.earlierSelection==nil && store.message != nil},set:{if !$0 {store.message=nil}})) {Button("OK") {store.message=nil}} message: {Text(store.message ?? "")}
 

@@ -11,7 +11,7 @@ public struct CompletionRecord: Codable, Equatable, Identifiable, Sendable {
     public func overlay(on current:SessionRow?,hostConnected:Bool=false)->SessionRow {
         var value=row
         value.connected=current?.connected ?? hostConnected
-        if let current,current.connected {value.session.openURLs=current.session.openURLs}
+        if let current,current.connected {value.session.openURLs=current.session.openURLs;value.session.background=current.session.background}
         return value
     }
     public init(_ row: SessionRow,observedAt:Date?=nil) { hostID=row.hostID;hostName=row.hostName;session=row.session;self.observedAt=observedAt ?? row.completionObservedAt }
@@ -38,7 +38,9 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
         reviewed=reviewed.filter { now.timeIntervalSince($0.value)<7*86400 }
         active=active.filter { now.timeIntervalSince($0.value)<7*86400 }
         lastSeen=lastSeen.filter { now.timeIntervalSince($0.value)<7*86400 }
-        let connected=rows.filter(\.connected)
+        let connected=rows.filter(\.connected).map {row -> SessionRow in
+            var value=row;value.session=row.session.backgroundCompletionCandidate;return value
+        }
         let hosts=Set(connected.map(\.hostID)).union(connectedHostIDs)
         let newHosts=Set(hosts.filter { baselines[$0] == nil })
         for host in newHosts { baselines[host]=now }
@@ -64,7 +66,9 @@ public struct CompletionTracker: Codable, Equatable, Sendable {
             lastSeen[row.id]=row.session.updatedAt
             if row.session.state != .finished,
                let completion=pending.first(where:{ $0.id == row.id }),
-               completion.session.updatedAt < row.session.updatedAt {
+               (completion.session.updatedAt < row.session.updatedAt ||
+                (completion.session.updatedAt == row.session.updatedAt && row.session.state == .working &&
+                 row.session.background?.activeTasks.contains(where:{$0.effectiveRole == .work && $0.isVerified(at:now)}) == true)) {
                 review(row.id)
             }
             if row.session.state == .working || row.session.state == .needsAttention {

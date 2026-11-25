@@ -9,11 +9,13 @@ public struct AgentSession: Codable, Equatable, Sendable {
     public var isHelper: Bool
     public var goalBlocked: Bool?
     public var openURLs:SessionOpenURLs?
-    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false, goalBlocked: Bool? = nil,openURLs:SessionOpenURLs?=nil) {
+    public var background:BackgroundTaskEvidence?
+    public init(id: String, provider: String, title: String, project: String, state: AgentState, updatedAt: Date, activity: String? = nil, parentId: String? = nil, isHelper: Bool = false, goalBlocked: Bool? = nil,openURLs:SessionOpenURLs?=nil,background:BackgroundTaskEvidence?=nil) {
         self.id=id; self.provider=provider; self.title=title; self.project=project; self.state=state; self.updatedAt=updatedAt; self.activity=activity; self.parentId=parentId; self.isHelper=isHelper || parentId != nil;self.goalBlocked=goalBlocked
         self.openURLs=openURLs
+        self.background=background
     }
-    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper,goalBlocked,openURLs }
+    private enum CodingKeys: String, CodingKey { case id,provider,title,project,state,updatedAt,activity,parentId,isHelper,goalBlocked,openURLs,background }
     public init(from decoder: Decoder) throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         id=try c.decode(String.self,forKey:.id);provider=try c.decode(String.self,forKey:.provider)
@@ -23,6 +25,9 @@ public struct AgentSession: Codable, Equatable, Sendable {
         isHelper=(try c.decodeIfPresent(Bool.self,forKey:.isHelper) ?? false) || parentId != nil
         goalBlocked=try c.decodeIfPresent(Bool.self,forKey:.goalBlocked)
         openURLs=try? c.decode(SessionOpenURLs.self,forKey:.openURLs)
+        let evidence=try? c.decode(BackgroundTaskEvidence.self,forKey:.background)
+        background=evidence?.isValid == true ? evidence : nil
+        if c.contains(.background),!(try c.decodeNil(forKey:.background)),background == nil,state != .needsAttention,state != .blocked {state = .unknown}
     }
 }
 public struct HostInfo: Codable, Equatable, Sendable { public var id: String; public var name: String; public var platform: String }
@@ -75,6 +80,7 @@ public struct SessionRow: Identifiable, Equatable, Sendable {
     public init(hostID: String, hostName: String, session: AgentSession, connected: Bool = true, completionPending: Bool = false, completionObservedAt: Date? = nil) { self.hostID=hostID; self.hostName=hostName; self.session=session; self.connected=connected; self.completionPending=completionPending;self.completionObservedAt=completionObservedAt }
 }
 public struct AgentPresentation {
+    public var monitoringCount:Int = 0
     public var doneCount: Int = 0
     public var visible: [SessionRow]; public var hiddenCount: Int; public var attentionCount: Int; public var workingCount: Int
     public var hiddenAttentionCount: Int {
@@ -85,7 +91,7 @@ public struct AgentPresentation {
         return hiddenCount > 0 ? "+\(hiddenCount) more \(hiddenCount == 1 ? "session" : "sessions")" : nil
     }
     public static func make(rows: [SessionRow], capacity: Int, showFinished: Bool = false) -> AgentPresentation {
-        let filtered = rows.filter { showFinished || $0.completionPending || ($0.session.state != .finished && $0.session.state != .idle) }
+        let filtered = rows.filter { showFinished || $0.completionPending || $0.session.isMonitoring || ($0.session.state != .finished && $0.session.state != .idle) }
         let sorted = filtered.sorted {
             let first = priority($0)
             let second = priority($1)
@@ -94,7 +100,7 @@ public struct AgentPresentation {
             return $0.id < $1.id
         }
         let visible = Array(sorted.prefix(max(0, capacity)))
-        return AgentPresentation(doneCount: filtered.filter(\.completionPending).count, visible: visible, hiddenCount: sorted.count-visible.count,
+        return AgentPresentation(monitoringCount:filtered.filter{$0.connected && $0.session.isMonitoring}.count,doneCount: filtered.filter(\.completionPending).count, visible: visible, hiddenCount: sorted.count-visible.count,
                                  attentionCount: filtered.filter { $0.session.state == .blocked || ($0.connected && $0.session.state == .needsAttention) }.count,
                                  workingCount: filtered.filter { $0.connected && $0.session.state == .working }.count)
     }
@@ -103,7 +109,8 @@ public struct AgentPresentation {
         if row.session.state == .blocked { return 1 }
         if row.completionPending { return 2 }
         if row.connected && row.session.state == .working { return 3 }
-        return 4+(row.connected ? row.session.state.priority : AgentState.unknown.priority)
+        if row.connected && row.session.isMonitoring {return 4}
+        return 5+(row.connected ? row.session.state.priority : AgentState.unknown.priority)
     }
 }
 

@@ -27,7 +27,7 @@ import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
-COLLECTOR_VERSION = '2.0.1'
+COLLECTOR_VERSION = '2.0.3'
 MAX_COLLECTOR_BYTES = 1024 * 1024
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -35,11 +35,14 @@ MAX_SHARED_SOURCES_BYTES = 1024 * 1024
 MAX_SHARED_ARTWORK_BYTES = 128 * 1024
 STALE_SECONDS = 1800
 MARKER = 'wokintosh-observer'
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 MAX_CACHE_BYTES = 1024 * 1024
 MAX_CACHE_ENTRIES = 512
 SCAN_GAP = {'_wokintosh_scan_gap': True}
-SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId', 'isHelper', 'goalBlocked', 'openURLs')
+SESSION_FIELDS = ('id', 'provider', 'title', 'project', 'state', 'updatedAt', 'activity', 'parentId', 'isHelper', 'goalBlocked', 'openURLs', 'background')
+MAX_BACKGROUND_TASKS = 64
+BACKGROUND_STATUSES = {'running', 'completed', 'failed', 'cancelled', 'ended', 'unknown', 'needsAttention'}
+BACKGROUND_ACTIVE = {'running', 'unknown', 'needsAttention'}
 STATES = {'working', 'needsAttention', 'blocked', 'idle', 'finished', 'unknown'}
 HOOK_EVENT_FIELDS = ('hook_event_name', 'session_id', 'sessionId', 'agent_id', 'tool_name',
                      'call_id', 'tool_use_id', 'notification_type', '_observedAt')
@@ -133,10 +136,12 @@ def base_session(identity, provider, cwd, updated, title=None, parent=None):
             'project': clean(project, 90), 'state': 'unknown',
             'updatedAt': stamp(updated), 'activity': '',
             'parentId': (clean(parent, 180) or None) if isinstance(parent, str) else None,
-            'isHelper': isinstance(parent, str) and bool(clean(parent, 180))}
+            'isHelper': isinstance(parent, str) and bool(clean(parent, 180)), '_startedAt': stamp(updated)}
 
 
 def finalize(session, now):
+    if session and session.get('background'):
+        return apply_background(session, now)
     if session and session['state'] == 'working':
         updated = parse_time(session['updatedAt'], now)
         if (now - updated).total_seconds() > STALE_SECONDS:
@@ -145,7 +150,290 @@ def finalize(session, now):
     return session
 
 
-def read_codex(path, now, title_index=None):
+def background_id(value):
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,180}', value) else None
+
+
+def normalized_background(value):
+    """Only bounded lifecycle metadata crosses caches or the protocol boundary."""
+    if (not isinstance(value, dict) or value.get('version') != 1 or
+            value.get('foregroundState') not in STATES or
+            not isinstance(value.get('tasks'), list) or len(value['tasks']) > MAX_BACKGROUND_TASKS):
+        return None
+    foreground = parse_time(value.get('foregroundUpdatedAt'), None)
+    if foreground is None:
+        return None
+    tasks = []
+    for task in value['tasks']:
+        if (not isinstance(task, dict) or not background_id(task.get('id')) or
+                task.get('status') not in BACKGROUND_STATUSES or
+                task.get('kind') not in ('shell', 'monitor', 'subagent', 'other') or
+                not isinstance(task.get('label'), str) or len(task['label']) > 90):
+            return None
+        dates = {key: parse_time(task.get(key), None) for key in ('startedAt', 'updatedAt', 'observedAt')}
+        if any(date is None for date in dates.values()):
+            return None
+        tasks.append(dict(id=task['id'], kind=task['kind'], label=clean(task['label'], 90),
+                          status=task['status'], **{key: stamp(date) for key, date in dates.items()}))
+    if len({task['id'] for task in tasks}) != len(tasks):
+        return None
+    result = dict(version=1, foregroundState=value['foregroundState'], foregroundUpdatedAt=stamp(foreground),
+                  tasks=tasks, incomplete=value.get('incomplete') is True)
+    inventory_at = parse_time(value.get('inventoryAt'), None)
+    if inventory_at:
+        result['inventoryAt'] = stamp(inventory_at)
+    return result
+
+
+def merge_background(first, second):
+    first, second = normalized_background(first), normalized_background(second)
+    if first is None:
+        return second
+    if second is None:
+        return first
+    result = dict(first if parse_time(first['foregroundUpdatedAt'], None) > parse_time(second['foregroundUpdatedAt'], None) else second)
+    tasks = {task['id']: task for task in first['tasks']}
+    for task in second['tasks']:
+        old = tasks.get(task['id'])
+        if old is None or (parse_time(task['updatedAt'], None), parse_time(task['observedAt'], None)) >= (parse_time(old['updatedAt'], None), parse_time(old['observedAt'], None)):
+            tasks[task['id']] = task
+    inventories = [value for value in (first, second) if value.get('inventoryAt')]
+    clears_incomplete = False
+    if inventories:
+        inventory = max(inventories, key=lambda value:parse_time(value['inventoryAt'], None))
+        inventory_at = parse_time(inventory['inventoryAt'], None)
+        result['inventoryAt'] = inventory['inventoryAt']
+        in_flight = {task['id'] for task in inventory['tasks'] if task['status'] in BACKGROUND_ACTIVE}
+        for task in tasks.values():
+            if (task['status'] in BACKGROUND_ACTIVE and task['id'] not in in_flight and
+                    max(parse_time(task['updatedAt'], None), parse_time(task['observedAt'], None)) < inventory_at):
+                task.update(status='ended', updatedAt=inventory['inventoryAt'], observedAt=inventory['inventoryAt'])
+        incomplete_dates = [parse_time(value['foregroundUpdatedAt'], None) for value in (first, second) if value.get('incomplete')]
+        clears_incomplete = not incomplete_dates or inventory_at >= max(incomplete_dates)
+    ordered = sorted(tasks.values(), key=lambda task: (task['status'] in BACKGROUND_ACTIVE, parse_time(task['updatedAt'], None)), reverse=True)
+    lost_active = any(task['status'] in BACKGROUND_ACTIVE for task in ordered[MAX_BACKGROUND_TASKS:])
+    result['incomplete'] = lost_active or (not clears_incomplete and (first.get('incomplete', False) or second.get('incomplete', False)))
+    result['tasks'] = ordered[:MAX_BACKGROUND_TASKS]
+    return result
+
+
+def observe_background_task(background, identity, kind, status, at, label=None, new_launch=False):
+    identity = background_id(str(identity)) if identity is not None else None
+    if identity is None or status not in BACKGROUND_STATUSES:
+        return
+    old = next((task for task in background['tasks'] if task['id'] == identity), None)
+    timestamp = stamp(at)
+    if old and parse_time(old['updatedAt'], None) > at:
+        return
+    # Replaying the original launch must not resurrect a later completed task.
+    if old and old['updatedAt'] == timestamp and old['status'] != 'running' and status == 'running':
+        return
+    kind = kind if kind in ('shell', 'monitor', 'subagent') else 'other'
+    new_run = old and new_launch and at > parse_time(old['startedAt'], at)
+    same_run = old and not new_run
+    repeated = same_run and old['status'] == status
+    terminal_repeat = same_run and old['status'] not in BACKGROUND_ACTIVE and status not in BACKGROUND_ACTIVE
+    if terminal_repeat and old['status'] != 'ended':
+        status = old['status']
+    label = re.sub(r'[\x00-\x1f\x7f]', ' ', label) if isinstance(label, str) else None
+    task = dict(id=identity, kind=old['kind'] if old and kind == 'other' else kind,
+                label=clean(label or (old and old['label']) or ('Monitor' if kind == 'monitor' else 'Background task') + ' · ' + identity[:12], 90),
+                status=status, startedAt=old['startedAt'] if same_run else timestamp,
+                updatedAt=old['updatedAt'] if repeated or terminal_repeat else timestamp,
+                observedAt=max([timestamp, old['observedAt']] if same_run else [timestamp], key=lambda value:parse_time(value, at)))
+    background['tasks'] = [item for item in background['tasks'] if item['id'] != identity] + [task]
+    ordered = sorted(background['tasks'], key=lambda item: (item['status'] in BACKGROUND_ACTIVE, parse_time(item['updatedAt'], None)), reverse=True)
+    if any(task['status'] in BACKGROUND_ACTIVE for task in ordered[MAX_BACKGROUND_TASKS:]):
+        background['incomplete'] = True
+    background['tasks'] = ordered[:MAX_BACKGROUND_TASKS]
+
+
+def apply_background(session, now):
+    background = normalized_background(session.get('background'))
+    if background is None:
+        return session
+    session['background'] = background
+    foreground = background['foregroundState']
+    active = [task for task in background['tasks'] if task['status'] in ('running', 'unknown', 'needsAttention')]
+    uncertain = background.get('incomplete') is True or any(task['status'] == 'unknown' or
+                    not -60 <= (now - parse_time(task['observedAt'], now)).total_seconds() <= STALE_SECONDS for task in active)
+    if session['state'] in ('needsAttention', 'blocked'):
+        return session
+    if foreground == 'needsAttention' or any(task['status'] == 'needsAttention' for task in active):
+        session.update(state='needsAttention', activity='Background agent needs input')
+    elif foreground == 'working' and -60 <= (now - parse_time(background['foregroundUpdatedAt'], now)).total_seconds() <= STALE_SECONDS:
+        session.update(state='working', activity='Working')
+    elif any(task['kind'] != 'monitor' and task['status'] == 'running' and
+             -60 <= (now - parse_time(task['observedAt'], now)).total_seconds() <= STALE_SECONDS for task in active):
+        count = sum(task['kind'] != 'monitor' and task['status'] == 'running' for task in active)
+        session.update(state='working', activity=f'{count} background task' + ('s' if count != 1 else '') + ' running')
+    elif uncertain:
+        session.update(state='unknown', activity='Background task activity unverified')
+    elif active:
+        session.update(state='idle', activity='Monitoring')
+    else:
+        session.update(state=foreground, activity='Turn completed' if foreground == 'finished' else session.get('activity', ''))
+        if foreground == 'working' and (now - parse_time(background['foregroundUpdatedAt'], now)).total_seconds() > STALE_SECONDS:
+            session.update(state='unknown', activity='No recent lifecycle signal')
+    # Lifecycle time is stable across polls. Liveness checks never manufacture Done.
+    session['updatedAt'] = max([background['foregroundUpdatedAt']] +
+                               [task['updatedAt'] for task in background['tasks'] if task['kind'] != 'monitor'], key=lambda value: parse_time(value, now))
+    return session
+
+
+def background_notifications(item):
+    """Read provider task envelopes, not arbitrary text fragments in a response."""
+    if item.get('type') == 'queue-operation' and item.get('operation') == 'enqueue':
+        content = item.get('content')
+    elif item.get('type') == 'user':
+        message = item.get('message')
+        content = message.get('content') if isinstance(message, dict) else None
+    else:
+        return []
+    if isinstance(content, list):
+        content = '\n'.join(part['text'] for part in content if isinstance(part, dict) and part.get('type') == 'text' and isinstance(part.get('text'), str))
+    if not isinstance(content, str) or not content.lstrip().startswith('<task-notification>') or len(content) > 65536:
+        return []
+    identity = re.search(r'<task-id>([A-Za-z0-9_.:-]{1,180})</task-id>', content)
+    status = re.search(r'<status>(completed|failed|killed|cancelled)</status>', content)
+    return [(identity.group(1), 'cancelled' if status.group(1) == 'killed' else status.group(1))] if identity and status else []
+
+
+def read_background(path, session, now, previous=None):
+    if not session:
+        return session
+    prior = normalized_background(previous)
+    background = dict(version=1, foregroundState=session['state'], foregroundUpdatedAt=session['updatedAt'],
+                      tasks=copy.deepcopy(prior['tasks']) if prior else [], incomplete=prior.get('incomplete', False) if prior else False)
+    if prior and parse_time(prior['foregroundUpdatedAt'], now) > parse_time(session['updatedAt'], now):
+        background.update(foregroundState=prior['foregroundState'], foregroundUpdatedAt=prior['foregroundUpdatedAt'])
+    calls = {}
+    for item in records(path):
+        if item is SCAN_GAP:
+            calls.clear()
+            continue
+        at = parse_time(item.get('timestamp'), None)
+        if at is None:
+            continue
+        if session['provider'] == 'claude':
+            message = item.get('message') if isinstance(item.get('message'), dict) else {}
+            content = message.get('content')
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get('type') == 'tool_use':
+                        name = part.get('name')
+                        data = part.get('input') if isinstance(part.get('input'), dict) else {}
+                        if name in ('Bash', 'Monitor', 'Agent', 'Task'):
+                            calls[part.get('id')] = ('monitor' if name == 'Monitor' else 'subagent' if name in ('Agent', 'Task') else 'shell', clean(data.get('description'), 90))
+                    elif part.get('type') == 'tool_result':
+                        data = item.get('toolUseResult')
+                        if isinstance(data, dict):
+                            task_id = data.get('backgroundTaskId') or data.get('monitorId') or (data.get('agentId') if data.get('isAsync') is True else None)
+                            kind, label = calls.get(part.get('tool_use_id'), ('other', ''))
+                            if task_id:
+                                observe_background_task(background, task_id, kind, 'running', at, label, new_launch=True)
+            notifications = background_notifications(item)
+            for identity, status in notifications:
+                observe_background_task(background, identity, 'other', status, at)
+        else:
+            payload = item.get('payload')
+            if not isinstance(payload, dict):
+                continue
+            command = payload.get('item') if payload.get('type') == 'item_completed' else payload
+            if isinstance(command, dict) and command.get('type') in ('CommandExecution', 'commandExecution'):
+                identity = command.get('process_id') or command.get('processId')
+                status = command.get('status')
+                mapped = {'in_progress': 'running', 'inProgress': 'running', 'running': 'running', 'completed': 'completed', 'failed': 'failed', 'declined': 'cancelled'}.get(status)
+                if mapped == 'completed' and command.get('exit_code', command.get('exitCode')) is None:
+                    mapped = 'unknown'
+                if identity is not None and mapped:
+                    observe_background_task(background, identity, 'shell', mapped, at, new_launch=mapped == 'running' and command.get('source') == 'unified_exec_startup')
+            if item.get('type') == 'response_item':
+                name = str(payload.get('name', '')).split('.')[-1]
+                if payload.get('type') == 'function_call' and name in ('exec_command', 'write_stdin'):
+                    try:
+                        args = json.loads(payload.get('arguments', '{}'))
+                    except (ValueError, TypeError):
+                        args = {}
+                    calls[payload.get('call_id')] = (name, args.get('session_id') if isinstance(args, dict) else None)
+                elif payload.get('type') == 'function_call_output' and payload.get('call_id') in calls:
+                    name, previous_id = calls[payload['call_id']]
+                    output = payload.get('output')
+                    if isinstance(output, str):
+                        # Match harness headers only, before any command output.
+                        header = output.partition('Output:')[0][:2048]
+                        running = re.search(r'^Process running with session ID (\d+)\s*$', header, re.M)
+                        exited = re.search(r'^Process exited with code (-?\d+)\s*$', header, re.M)
+                        if running:
+                            observe_background_task(background, running.group(1), 'shell', 'running', at, new_launch=name == 'exec_command')
+                        elif name == 'write_stdin' and previous_id is not None and exited:
+                            observe_background_task(background, previous_id, 'shell', 'completed' if exited.group(1) == '0' else 'failed', at)
+    if background['tasks']:
+        session['background'] = background
+    return finalize(session, now)
+
+
+def background_file_is_open(path, timeout):
+    """Positive writer evidence only; a reader of old output proves nothing."""
+    utility = shutil.which('fuser' if platform.system() == 'Linux' else 'lsof')
+    if utility is None:
+        return False
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            return False
+        linux = platform.system() == 'Linux'
+        args = [utility, '--', str(path)] if linux else [utility, '-Fpa', '--', str(path)]
+        result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, timeout=timeout, check=False)
+        if result.returncode != 0:
+            return False
+        if not linux:
+            return any(line in ('aw', 'au') for line in result.stdout.splitlines())
+        for pid in result.stdout.split():
+            if not pid.isdigit():
+                continue
+            directory = Path('/proc') / pid / 'fd'
+            try:
+                if directory.stat().st_uid != os.getuid():
+                    continue
+                for descriptor in list(directory.iterdir())[:256]:
+                    try:
+                        opened = descriptor.stat()
+                        if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                            continue
+                        flags = (directory.parent / 'fdinfo' / descriptor.name).read_text()[:4096]
+                        match = re.search(r'^flags:\s*([0-7]+)$', flags, re.M)
+                        if match and int(match.group(1), 8) & os.O_ACCMODE in (os.O_WRONLY, os.O_RDWR):
+                            return True
+                    except OSError:
+                        continue
+            except OSError:
+                continue
+        return False
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
+
+
+def refresh_background_liveness(session, path, now, deadline):
+    if not session or session.get('provider') != 'claude' or not session.get('background'):
+        return
+    for task in session['background']['tasks']:
+        if task['status'] != 'running' or (now - parse_time(task['observedAt'], now)).total_seconds() < 60:
+            continue
+        for root in (Path('/tmp'), Path(tempfile.gettempdir())):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            output = root / ('claude-' + str(os.getuid())) / path.parent.name / 'tasks' / (task['id'] + '.output')
+            if output.exists() and background_file_is_open(output, min(0.4, remaining)):
+                task['observedAt'] = stamp(now)
+                break
+
+
+def read_codex(path, now, title_index=None, previous_background=None):
     session = None
     pending_input = {}
     unmatched_input = None
@@ -246,10 +534,10 @@ def read_codex(path, now, title_index=None):
                 session['updatedAt'] = stamp(last_time)
     if session:
         set_pending_input(session, pending_input, unmatched_input)
-    return finalize(session, now)
+    return read_background(path, session, now, previous_background)
 
 
-def read_claude(path, now):
+def read_claude(path, now, previous_background=None):
     session = None
     title = None
     last_time = now
@@ -275,6 +563,8 @@ def read_claude(path, now):
         if item.get('cwd'):
             session['project'] = clean(Path(item['cwd']).name, 90)
         kind = item.get('type')
+        if background_notifications(item):
+            continue
         message = item.get('message') or {}
         if not isinstance(message, dict):
             message = {}
@@ -289,7 +579,7 @@ def read_claude(path, now):
             session['state'], session['activity'] = 'finished', 'Turn completed'
         if kind in ('user', 'assistant') or (kind == 'system' and item.get('subtype') == 'turn_duration'):
             session['updatedAt'] = stamp(last_time)
-    return finalize(session, now)
+    return read_background(path, session, now, previous_background)
 
 
 def hook_identity(provider, event):
@@ -388,6 +678,29 @@ def apply_hook_state(session, event, now):
         state, activity = 'needsAttention', 'Input needed'
     set_pending_input(result, calls, unknown_since)
     result.update(state=state, activity=activity, updatedAt=stamp(now), source='hook')
+    previous = normalized_background(result.get('background'))
+    snapshot = event.get('background_tasks') if session.get('provider') == 'claude' and name == 'Stop' and not result.get('isHelper') else None
+    if previous or isinstance(snapshot, list):
+        background = previous or dict(version=1, tasks=[])
+        background.update(foregroundState=state, foregroundUpdatedAt=stamp(now))
+        valid_tasks = [task for task in snapshot[:MAX_BACKGROUND_TASKS] if isinstance(task, dict) and
+                       background_id(task.get('id')) and isinstance(task.get('status'), str)] if isinstance(snapshot, list) else []
+        complete = (isinstance(snapshot, list) and len(snapshot) <= MAX_BACKGROUND_TASKS and
+                    len(valid_tasks) == len(snapshot) and len({task['id'] for task in valid_tasks}) == len(valid_tasks))
+        if complete:
+            background['incomplete'] = False
+            background['inventoryAt'] = stamp(now)
+            present = {task['id'] for task in snapshot}
+            for task in list(background['tasks']):
+                if task['status'] in ('running', 'unknown', 'needsAttention') and task['id'] not in present:
+                    observe_background_task(background, task['id'], task['kind'], 'ended', now)
+        elif isinstance(snapshot, list):
+            background['incomplete'] = True
+        for task in valid_tasks:
+            status = {'running':'running','pending':'running','completed':'completed','failed':'failed','killed':'cancelled','cancelled':'cancelled'}.get(task['status'], 'unknown')
+            observe_background_task(background, task['id'], task.get('type'), status, now, task.get('description'))
+        if background['tasks'] or background.get('incomplete') or complete:
+            result['background'] = background
     return result
 
 
@@ -644,6 +957,13 @@ def valid_session(value, provider=None):
     if value.get('goalBlocked') is not None and not isinstance(value['goalBlocked'], bool):
         return None
     result = {field: value.get(field) for field in SESSION_FIELDS}
+    started = parse_time(value.get('_startedAt'), None)
+    if started:
+        result['_startedAt'] = stamp(started)
+    result.pop('background', None)
+    background = normalized_background(value.get('background'))
+    if background:
+        result['background'] = background
     # Wire targets are regenerated from bounded provider evidence, never trusted
     # merely because a cached summary contained an arbitrary openURLs object.
     result.pop('openURLs', None)
@@ -1190,6 +1510,43 @@ def refresh_managed_observer(home):
     return {'status': 'updated', 'backupPath': str(backup)}
 
 
+def merge_helper_background(sessions, now):
+    """Hidden helper rows still contribute to their parent's effective lifecycle."""
+    children = {}
+    for key, child in sessions.items():
+        parent = (child['provider'], child.get('parentId'))
+        if parent in sessions and parent != key:
+            children.setdefault(parent, []).append(key)
+    done = set()
+    def visit(key, trail):
+        if key in done or key in trail or len(trail) >= 16:
+            return
+        parent = sessions[key]
+        background = normalized_background(parent.get('background')) or dict(version=1, foregroundState=parent['state'], foregroundUpdatedAt=parent['updatedAt'], tasks=[])
+        for child_key in children.get(key, []):
+            visit(child_key, trail | {key})
+            child = sessions[child_key]
+            child_id = child['id'].removeprefix(parent['id'] + ':')
+            if child['provider'] == 'claude':
+                child_id = child_id.removeprefix('agent-')
+            status = {'working':'running','needsAttention':'needsAttention','blocked':'needsAttention',
+                      'finished':'completed','idle':'completed','unknown':'unknown'}[child['state']]
+            if child.get('background') and child['state'] == 'idle' and any(task['status'] == 'running' for task in child['background']['tasks']):
+                status = 'running'
+            observe_background_task(background, child_id, 'subagent', status, parse_time(child['updatedAt'], now), child['title'])
+            task = next((task for task in background['tasks'] if task['id'] == child_id), None)
+            if task:
+                task['startedAt'] = child.get('_startedAt', task['startedAt'])
+                observations = [task['observedAt']] + [item['observedAt'] for item in (child.get('background') or {}).get('tasks', []) if item['status'] == 'running']
+                task['observedAt'] = max(observations, key=lambda value:parse_time(value, now))
+        if background['tasks']:
+            parent['background'] = background
+            finalize(parent, now)
+        done.add(key)
+    for key in children:
+        visit(key, set())
+
+
 def make_snapshot(home, state_dir, now, host_name=None):
     state_dir.mkdir(parents=True, exist_ok=True)
     title_index = {}
@@ -1198,14 +1555,16 @@ def make_snapshot(home, state_dir, now, host_name=None):
             title_index[item['id']] = clean(item.get('thread_name') or item.get('title'), 90)
     sessions = {}
     transcript_identities = set()
+    transcript_paths = {}
     bridge_links = {}
     errors = []
     cached = load_parse_cache(state_dir / 'parse-cache.json')
     next_cache = {}
+    liveness_budget = 1.0
     title_revision = hashlib.sha256(json.dumps(title_index, sort_keys=True).encode()).hexdigest()
     for provider, directory, parser in (
-        ('codex', home / '.codex/sessions', lambda p: read_codex(p, now, title_index)),
-        ('claude', home / '.claude/projects', lambda p: read_claude(p, now))):
+        ('codex', home / '.codex/sessions', lambda p, previous: read_codex(p, now, title_index, previous)),
+        ('claude', home / '.claude/projects', lambda p, previous: read_claude(p, now, previous))):
         if not directory.is_dir():
             continue
         try:
@@ -1222,25 +1581,26 @@ def make_snapshot(home, state_dir, now, host_name=None):
                 fingerprint = [info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino,
                                title_revision if provider == 'codex' else '']
                 entry = cached.get(key_hash)
+                previous = (entry.get('session') or {}).get('background') if isinstance(entry, dict) else None
                 if isinstance(entry, dict) and 'session' in entry and entry.get('fingerprint') == fingerprint:
                     session = valid_session(entry.get('session'), provider)
                     # A cached null is a deliberate negative parse result.
                     if session is None and entry.get('session') is not None:
-                        session = parser(path)
+                        session = parser(path, previous)
                 else:
-                    session = parser(path)
+                    session = parser(path, previous)
                 # Fresh parses must satisfy the same protocol contract as cache hits.
                 session = valid_session(session, provider)
                 next_cache[key_hash] = {'fingerprint': fingerprint, 'session': session}
                 session = finalize(dict(session), now) if session else None
                 if session:
                     key = (provider, session['id'])
+                    transcript_paths[key] = path
                     transcript_identities.add(key)
                     if key not in sessions or session['updatedAt'] > sessions[key]['updatedAt']:
                         sessions[key] = session
             except (OSError, ValueError, TypeError, KeyError):
                 continue
-    save_parse_cache(state_dir / 'parse-cache.json', next_cache)
     for path in (state_dir / 'hooks').glob('*.json'):
         try:
             entry = json.loads(path.read_text())
@@ -1251,6 +1611,13 @@ def make_snapshot(home, state_dir, now, host_name=None):
             key = (provider, identity)
             if provider == 'claude':
                 bridge_links[key] = entry.get('_bridgeSessionID')
+            if key in sessions:
+                combined = merge_background(sessions[key].get('background'), entry.get('background'))
+                if combined:
+                    current = sessions[key]
+                    if not current.get('background') and parse_time(current['updatedAt'], now) > parse_time(combined['foregroundUpdatedAt'], now):
+                        combined.update(foregroundState=current['state'], foregroundUpdatedAt=current['updatedAt'])
+                    current['background'] = combined
             if key not in sessions:
                 sessions[key] = finalize(entry, now)
             elif (provider == 'claude' and entry.get('_hookStateVersion', 0) >= HOOK_STATE_VERSION and
@@ -1259,7 +1626,12 @@ def make_snapshot(home, state_dir, now, host_name=None):
                 # Versioned summaries retain true lifecycle evidence after its observation
                 # leaves bounded history. A newer transcript still supersedes old hooks.
                 current = sessions[key]
+                background = merge_background(current.get('background'), entry.get('background'))
                 current.update({field: entry[field] for field in ('state', 'activity', 'updatedAt')})
+                if background:
+                    if not entry.get('background') and parse_time(entry['updatedAt'], now) > parse_time(background['foregroundUpdatedAt'], now):
+                        background.update(foregroundState=entry['state'], foregroundUpdatedAt=entry['updatedAt'])
+                    current['background'] = background
                 calls, unknown = pending_input_state(entry)
                 set_pending_input(current, calls, unknown)
                 sessions[key] = finalize(current, now)
@@ -1285,10 +1657,23 @@ def make_snapshot(home, state_dir, now, host_name=None):
                     finalize(sessions[key], now)
         except (OSError, ValueError, KeyError, TypeError):
             continue
+    for key, path in transcript_paths.items():
+        before_liveness = time.monotonic()
+        refresh_background_liveness(sessions[key], path, now, before_liveness + max(0, liveness_budget))
+        liveness_budget -= time.monotonic() - before_liveness
+        finalize(sessions[key], now)
+    for entry in next_cache.values():
+        parsed = entry.get('session')
+        current = sessions.get((parsed['provider'], parsed['id'])) if parsed else None
+        if current and current.get('background'):
+            parsed['background'] = copy.deepcopy(current['background'])
+    save_parse_cache(state_dir / 'parse-cache.json', next_cache)
+    merge_helper_background(sessions, now)
     goal_identities = merge_goal_markers(sessions, state_dir, home, transcript_identities)
     if goal_identities is None:
         errors.append('Goal status unavailable')
     for key, session in sessions.items():
+        finalize(session, now)
         session['goalBlocked'] = key in goal_identities if goal_identities is not None else (True if session.get('goalBlocked') is True else None)
         if session['provider'] == 'claude' and bridge_links.get(key):
             session['_bridgeSessionID'] = bridge_links[key]

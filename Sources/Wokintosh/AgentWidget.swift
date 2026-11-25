@@ -6,9 +6,11 @@ struct AgentWidget: View {
     let widget: DashboardWidget
     var actionsEnabled=true
     @State private var showEarlierDone=false
+    @State private var backgroundSelection:SessionRow?
     var body: some View {
         TimelineView(.periodic(from:.now,by:15)) {context in content(at:context.date)}
             .sheet(isPresented:$showEarlierDone) {EarlierDoneView(store:store,widgetID:widget.id,actionsEnabled:actionsEnabled)}
+            .sheet(item:$backgroundSelection) {row in BackgroundTaskSheet(store:store,widgetID:widget.id,rowID:row.id)}
     }
     private func content(at now:Date)->some View {
         GeometryReader { geometry in
@@ -101,6 +103,8 @@ struct AgentWidget: View {
                 state(row,t:t,font:22).frame(width:156*t,alignment:.leading)
             }
         }.contextMenu {
+            Button("Background Tasks…") {backgroundSelection=row}.disabled(store.document.previewMode)
+            Divider()
             if widget.action.kind != .none {
                 Button("Open Configured Action") {if actionsEnabled {store.activateWidget(widget.id,provider:row.session.provider,session:row.session)}}
                     .disabled(!actionsEnabled || store.document.previewMode)
@@ -125,7 +129,7 @@ struct AgentWidget: View {
     func state(_ row:SessionRow,t:Double,font:Double)->some View {
         HStack(spacing:6) {
             StatusDot(state:row.session.state,connected:row.connected).frame(width:12*t,height:12*t)
-            Text(row.connected || row.session.state == .blocked ? row.session.state.label : "Offline").font(retroFont(font*t)).foregroundStyle(StatusDot(state:row.session.state,connected:row.connected).tint)
+            Text(row.connected || row.session.state == .blocked ? row.session.statusLabel : "Offline").font(retroFont(font*t)).foregroundStyle(StatusDot(state:row.session.state,connected:row.connected).tint)
             if row.completionPending {
                 Button { store.reviewCompletion(row) } label: {
                     Image(systemName:"checkmark.circle").font(.system(size:21*t))

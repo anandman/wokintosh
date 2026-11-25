@@ -12,6 +12,10 @@ Drag Wokintosh to Applications and open it. **Click the Mac icon at the top righ
 
 Widgets can be resized and duplicated independently, with their own content and optional app/link actions. Completed agents stay highlighted Done until reviewed. Optionally choose **Collapse Done after** in an Agent widget’s Content settings to move older notices into **Earlier Done** while keeping them unread. Blocked goals remain visible so unfinished work is not forgotten.
 
+Background tasks are tracked separately from foreground responses. Finite jobs keep a session **Working**; designated monitors show **Monitoring** between active turns. Monitoring stays visible below Working even with inactive sessions hidden, and does not count as Working. Right-click a session → **Background Tasks…** to choose **Automatic**, **Work** or **Monitor** for an individual runner. Automatic recognizes explicit provider monitors; ambiguous shell jobs count as work. Choices apply to the current task run and stay out of setup exports.
+
+Claude task snapshots, launch/completion notifications and Codex command lifecycle records supply the evidence. Quiet or long-running processes are not classified by guesswork. When task activity cannot be verified, Wokintosh shows **Unknown** instead of assuming Done. Updates to the collector and the Mac/mobile apps are needed for the new task controls; older collectors continue working without task details.
+
 Move your dashboard to another Mac with **Settings → Dashboard → (…) → Export Setup…**, then **Import Setup…** on the other Mac. Import previews machine mappings and creates a backup. **Export Shareable Template…** saves a starting layout with personal machine, location, calendar, and action settings removed.
 
 Wokintosh checks for updates automatically and can download them in the background, installing when you quit. Use **Settings → Updates** or **Check for Updates** in the rainbow menu to install and relaunch sooner. Versions before 1.1 need one final manual installation.
@@ -64,9 +68,9 @@ Install Wokintosh 2.0 or later on the publishing Mac. To build it yourself, use 
 
 The display Mac publishes only Agent widgets you select in **Settings → iPhone & iPad**. Publishing is off by default. The publisher binds to `127.0.0.1:8787`; Tailscale Serve supplies private HTTPS on port `9443`. Access also requires a private pairing key. This uses neither Tailscale Funnel nor a public relay. Keep Wokintosh and the Mac running; its dashboard window can be closed.
 
-Optional **Allow Agent controls** lets paired devices review Done and change Wokintosh’s manual Blocked annotations. The display Mac saves the shared state; controls stay off by default. While enabled, the pairing key grants these controls as well as viewing access. Provider sessions remain observational.
+Optional **Allow Agent controls** lets paired devices review Done, change Wokintosh’s manual Blocked annotations and classify background runners as Work or Monitor. The display Mac saves the shared state; controls stay off by default. While enabled, the pairing key grants these controls as well as viewing access. Provider sessions remain observational.
 
-The app uses the desktop’s classic Mac palette and provider icons. Tap a session to open it, tap the Done checkmark to review it, or long-press a row for manual Blocked controls. Connection and widget selection live in Settings (the Mac icon). Home Screen widgets keep compact classic styling, automatic dark appearance and a Done checkmark; iOS owns their long-press menu.
+The app uses the desktop’s classic Mac palette and provider icons. Tap a session to open it, tap the Done checkmark to review it, or long-press a row for manual Blocked controls and **Background Tasks…**. Runner choices sync through the display Mac; ordinary session taps still open the provider immediately. Connection and widget selection live in Settings (the Mac icon). Home Screen widgets keep compact classic styling, automatic dark appearance and a Done checkmark; iOS owns their long-press menu.
 
 The paired device mirrors the selected widget’s filters and attention-first ordering. It shows an **As of** time and stale/offline states; iOS schedules widget refreshes and may take longer than the requested 15 minutes. Viewing or opening a session does not review Done notices, send a prompt or approve an action.
 

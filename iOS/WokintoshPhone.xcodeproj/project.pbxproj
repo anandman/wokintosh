@@ -12,6 +12,7 @@
 		169DCCA127BBE878B86DFF6C /* PhoneRepositoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4320F56CA4637CB31722A7CE /* PhoneRepositoryCoordinator.swift */; };
 		17664A1C74B1C1ADBC531F2D /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7124D10F766FC4AA80DFAC42 /* WokintoshCore */; };
 		2D760AFB02D7BB7A08DC2063 /* PhoneWidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A29DE8EC0457AA921311C2 /* PhoneWidgetTests.swift */; };
+		3405C98BA0DCB490D93DEBAF /* PhoneBackgroundTasks.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30BB5F216A551C2861D57BB /* PhoneBackgroundTasks.swift */; };
 		342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4193D399610A9078D47B9EDC /* PhoneCredentials.swift */; };
 		398A3D61C17562A3CF7A8CF2 /* WokintoshCore in Frameworks */ = {isa = PBXBuildFile; productRef = D14623963FB5621E522FF987 /* WokintoshCore */; };
 		3F4CE88C15B6693AE611AC52 /* PhoneFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31018E93358078734C1300A /* PhoneFixtures.swift */; };
@@ -108,6 +109,7 @@
 		CA3DFA1C572340C00031FC48 /* PhoneStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneStoreTests.swift; sourceTree = "<group>"; };
 		CE73DA4ABA3062F446828C56 /* PublishedWidgetIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishedWidgetIntent.swift; sourceTree = "<group>"; };
 		D73C4BF17E8BC5B0F1C3AFFB /* PhoneChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneChrome.swift; sourceTree = "<group>"; };
+		E30BB5F216A551C2861D57BB /* PhoneBackgroundTasks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneBackgroundTasks.swift; sourceTree = "<group>"; };
 		EF9976867591069013512BD5 /* PhoneSessionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSessionRow.swift; sourceTree = "<group>"; };
 		F31018E93358078734C1300A /* PhoneFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneFixtures.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -184,6 +186,7 @@
 			isa = PBXGroup;
 			children = (
 				AA6DB780B0DE146F62B7502F /* Info.plist */,
+				E30BB5F216A551C2861D57BB /* PhoneBackgroundTasks.swift */,
 				4C9301CDA03F1A9C543C1D87 /* PhoneScannerView.swift */,
 				EF9976867591069013512BD5 /* PhoneSessionRow.swift */,
 				37D16D3C62C60EE788C2DF88 /* PhoneSettingsView.swift */,
@@ -380,6 +383,7 @@
 			files = (
 				EA1D4C57212564809CF9434F /* AgentControlIntent.swift in Sources */,
 				DF7635198FB4C464ECA69276 /* PhoneAgentRowView.swift in Sources */,
+				3405C98BA0DCB490D93DEBAF /* PhoneBackgroundTasks.swift in Sources */,
 				07741634E90EBBAEDFFC832B /* PhoneChrome.swift in Sources */,
 				342D184FA0FE1D9261023AB5 /* PhoneCredentials.swift in Sources */,
 				7D19C63335632DA9E7485193 /* PhoneFixtures.swift in Sources */,

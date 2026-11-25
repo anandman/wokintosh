@@ -17,6 +17,7 @@ struct PhoneSessionRow:View {
             }
         }.background(row.completionPending ? PhonePalette.purple.opacity(0.10) : .clear)
             .contextMenu {
+                Button("Background Tasks…") {store.showBackgroundTasks(row)}
                 if let mark {
                     Button("Mark Blocked") {Task {await store.perform(mark)}}.disabled(store.performingAction)
                 }
@@ -26,6 +27,7 @@ struct PhoneSessionRow:View {
                 Button("Session details",systemImage:"info.circle") {store.showSessionDetails(row)}
             }
             .accessibilityActions {
+                Button("Background Tasks") {store.showBackgroundTasks(row)}
                 if let mark {Button("Mark Blocked") {Task {await store.perform(mark)}}}
                 if let clear {Button("Clear Manual Blocked") {Task {await store.perform(clear)}}}
             }
@@ -49,7 +51,7 @@ struct PhoneSessionInformation:View {
                     .font(PhonePalette.font(14,relativeTo:.caption)).foregroundStyle(PhonePalette.secondary).lineLimit(2)
                 HStack(spacing:5) {
                     Circle().fill(stateColor).frame(width:8,height:8).accessibilityHidden(true)
-                    Text(row.completionPending ? "Done" : row.session.state.label).font(PhonePalette.font(14,bold:true,relativeTo:.caption)).foregroundStyle(stateColor)
+                    Text(row.completionPending ? "Done" : row.session.statusLabel).font(PhonePalette.font(14,bold:true,relativeTo:.caption)).foregroundStyle(stateColor)
                     if offline || !row.connected {Text("· Offline").font(.caption).foregroundStyle(PhonePalette.secondary)}
                     else if row.freshness(at:Date()) == .stale {Text("· Stale").font(.caption).foregroundStyle(PhonePalette.secondary)}
                 }
