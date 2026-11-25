@@ -1,15 +1,10 @@
-# Wokintosh 2.0.1
+# Wokintosh 2.0.2
 
-Keep temporary Codex background jobs out of the main Agents list, and see when your machines need a collector update.
+Collector updates now announce themselves with a native popup, and System readings are easier to distinguish at a glance.
 
-- **Temporary Codex runs.** Hooks that explicitly report no persistent transcript are classified as helpers. They are hidden when Show Helpers is off, including in published iPhone/iPad widgets. Older hooks that omit this information remain supported; regular sessions are never hidden just because a title or transcript is missing.
-- **Collector update notices.** Settings → Machines shows each connected machine’s collector status and an Update button when needed. A dashboard reminder opens Machines. Code fingerprints detect changes without depending on the protocol version; a newer collector is identified without recommending a downgrade. Older collectors show “version unknown” until updated.
-- **Observer copies stay current.** An explicit remote Update also refreshes an existing private Wokintosh-managed status-observer copy, with a backup. It does not enable new hooks or change provider hook settings or trust. A failure to update an observer is reported separately from a successful collector installation.
+- **Collector update popup.** Choose Review Updates to open Settings → Machines, or Later to keep working with the menu reminder still available. The popup names affected machines, including a local managed observer when needed. New updates can prompt again; acknowledged updates stay quiet across polling and app relaunches. A popup that was never shown is not permanently dismissed.
+- **Clearer System readings.** CPU is blue, RAM purple and disk space green, with matching values, bold headings, larger icons and lightly tinted reading panels. USED and FREE are more prominent. RAM remains in GB; disk measurements and usage bars keep their existing meaning.
 
-## Update
+Install through Sparkle’s **Check for Updates**, or download the signed, notarized Mac app. Update collectors only when Machines says they need it. The collector code is unchanged from 2.0.1, so already-current collectors do not need another installation. Existing iPhone/iPad builds remain compatible and do not need reinstalling. The companion remains source-built with Xcode.
 
-Install the Mac update through Sparkle’s **Check for Updates**, then open **Settings → Machines** and update each remote collector. On any Mac running local Wokintosh observers, use **Enable / Update Codex Hooks** there as well. Reload or restart affected Codex clients if needed and review any changed commands normally in `/hooks`.
-
-Already-saved temporary Done notices from older observers may need to be reviewed once: their saved metadata did not retain the evidence required to reclassify them. New observations with explicit nonpersistent metadata are classified automatically. Show Helpers remains available if you want to inspect these runs.
-
-The Mac app and DMG are signed, notarized and stapled, and use the existing Sparkle signing key. Your dashboards, source settings, pairing and unread notices are preserved. Existing iPhone/iPad builds continue working; this patch does not require reinstalling them. The companion remains [self-built with Xcode](https://github.com/anandman/wokintosh/blob/v2.0.1/docs/IPHONE.md), with no prebuilt IPA or TestFlight distribution.
+Notification acknowledgements are local to this Mac and stay out of setup exports. Reviewing the popup opens Machines; collector installation still requires your explicit Update action.

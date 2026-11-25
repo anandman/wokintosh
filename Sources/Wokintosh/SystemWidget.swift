@@ -21,15 +21,15 @@ struct SystemWidget: View {
             let t=store.document.textScale
             let items=readings(value)
             let valueFont=NSFont(name:"Arial-BoldMT",size:26*t) ?? NSFont.boldSystemFont(ofSize:26*t)
-            let labelFont=NSFont(name:"ArialMT",size:18*t) ?? NSFont.systemFont(ofSize:18*t)
+            let labelFont=NSFont(name:"Arial-BoldMT",size:17*t) ?? NSFont.systemFont(ofSize:18*t)
             let inlineLabelFont=NSFont(name:"Arial-BoldMT",size:16*t) ?? NSFont.boldSystemFont(ofSize:16*t)
-            let compactLabelFont=NSFont(name:"ArialMT",size:16*t) ?? NSFont.systemFont(ofSize:16*t)
+            let compactLabelFont=NSFont(name:"Arial-BoldMT",size:16*t) ?? NSFont.systemFont(ofSize:16*t)
             let compactValueFont=NSFont(name:"Arial-BoldMT",size:20*t) ?? NSFont.boldSystemFont(ofSize:20*t)
             let inlineValueFont=NSFont(name:"Arial-BoldMT",size:22*t) ?? NSFont.boldSystemFont(ofSize:22*t)
-            let valueWidth=items.map{width($0.compactValue,font:valueFont)}.max() ?? 0
-            let labelWidth=items.map{width(heading($0),font:labelFont)+23*t}.max() ?? 0
-            let compactWidth=items.map{max(width(heading($0),font:compactLabelFont)+20*t,width($0.compactValue,font:compactValueFont))}.max() ?? 0
-            let inlineWidth=items.map{width($0.label,font:inlineLabelFont)+width(inlineValue($0),font:inlineValueFont)+25*t}.max() ?? 0
+            let valueWidth=items.map{width($0.compactValue,font:valueFont)+10*t}.max() ?? 0
+            let labelWidth=items.map{width(heading($0),font:labelFont)+37*t}.max() ?? 0
+            let compactWidth=items.map{max(width(heading($0),font:compactLabelFont)+35*t,width($0.compactValue,font:compactValueFont)+10*t)}.max() ?? 0
+            let inlineWidth=items.map{width($0.label,font:inlineLabelFont)+width(inlineValue($0),font:inlineValueFont)+40*t}.max() ?? 0
             let layout=SystemMetricLayout(width:g.size.width,height:g.size.height,textScale:t,count:items.count,
                                           minimumColumnWidth:max(valueWidth,labelWidth)/t+2,
                                           minimumWrappedColumnWidth:valueWidth/t+2,
@@ -76,25 +76,25 @@ struct SystemWidget: View {
         return VStack(alignment:.leading,spacing:0) {
             if layout.stackedCompact {
                 HStack(alignment:.top,spacing:5*t) {
-                    Image(systemName:item.symbol).foregroundStyle(item.tint).frame(width:15*t)
+                    Image(systemName:item.symbol).font(.system(size:18*t,weight:.bold)).frame(width:20*t)
                     Text(heading(item)).lineLimit(1)
-                }.font(retroFont(16*t,bold:false)).frame(height:19*t,alignment:.topLeading)
-                Text(item.compactValue).font(retroFont(20*t)).lineLimit(1).padding(.top,t)
+                }.font(retroFont(16*t)).foregroundStyle(item.tint).frame(height:19*t,alignment:.topLeading)
+                Text(item.compactValue).font(retroFont(20*t)).foregroundStyle(item.tint).lineLimit(1).padding(.top,t)
                 Spacer(minLength:t)
             } else if layout.compact {
                 HStack(spacing:5*t) {
-                    Image(systemName:item.symbol).font(.system(size:15*t,weight:.semibold)).foregroundStyle(item.tint).frame(width:15*t)
-                    Text(item.label).font(retroFont(16*t)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
-                    Text(inlineValue(item)).font(retroFont(22*t)).lineLimit(1).fixedSize(horizontal:true,vertical:false).layoutPriority(1)
+                    Image(systemName:item.symbol).font(.system(size:18*t,weight:.bold)).foregroundStyle(item.tint).frame(width:20*t)
+                    Text(item.label).font(retroFont(16*t)).foregroundStyle(item.tint).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading)
+                    Text(inlineValue(item)).font(retroFont(22*t)).foregroundStyle(item.tint).lineLimit(1).fixedSize(horizontal:true,vertical:false).layoutPriority(1)
                 }.frame(height:26*t)
                 Spacer(minLength:2*t)
             } else {
                 HStack(alignment:.top,spacing:5*t) {
-                    Image(systemName:item.symbol).foregroundStyle(item.tint).frame(width:18*t)
-                    Text(heading(item)).lineLimit(layout.labelLineLimit).fixedSize(horizontal:false,vertical:true)
-                }.font(retroFont(18*t,bold:false))
+                    Image(systemName:item.symbol).font(.system(size:20*t,weight:.bold)).frame(width:22*t)
+                    Text(heading(item)).lineLimit(layout.labelLineLimit).minimumScaleFactor(0.85).fixedSize(horizontal:false,vertical:true)
+                }.font(retroFont(17*t)).foregroundStyle(item.tint)
                     .frame(height:21*t*Double(layout.labelLineLimit),alignment:.topLeading)
-                Text(item.compactValue).font(retroFont(26*t)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(item.compactValue).font(retroFont(26*t)).foregroundStyle(item.tint).lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top,valueGap)
                 Spacer(minLength:valueGap)
             }
@@ -108,13 +108,16 @@ struct SystemWidget: View {
                 else { Rectangle().fill(.clear).overlay(Rectangle().stroke(.black.opacity(0.4),lineWidth:1)).overlay(Text("—").font(.system(size:9))) }
             }.frame(height:(layout.stackedCompact ? 4 : 5)*t)
         }
+        .padding(.horizontal,5*t)
         .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
+        .background(item.tint.opacity(0.09))
+        .overlay(Rectangle().stroke(item.tint.opacity(0.35),lineWidth:0.7))
         .accessibilityElement(children:.combine)
         .accessibilityLabel("\(item.label), \(item.value)")
         .help("\(item.label): \(item.value)\n\(item.detail)\n"+(item.fraction.map{String(format:"%.0f%% used",$0*100)} ?? "Usage unavailable"))
     }
-    private func heading(_ item:MetricReading)->String {item.label+(item.qualifier.isEmpty ? "" : " "+item.qualifier)}
-    private func inlineValue(_ item:MetricReading)->String {item.compactValue+(item.qualifier.isEmpty ? "" : " "+item.qualifier)}
+    private func heading(_ item:MetricReading)->String {item.label+(item.qualifier.isEmpty ? "" : " "+item.qualifier.uppercased())}
+    private func inlineValue(_ item:MetricReading)->String {item.compactValue+(item.qualifier.isEmpty ? "" : " "+item.qualifier.uppercased())}
     private func width(_ text:String,font:NSFont)->Double {ceil((text as NSString).size(withAttributes:[.font:font]).width)}
     private func bytes(_ value:UInt64?)->String {value.map{ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.memory)} ?? "—"}
     private func compactBytes(_ value:UInt64?,fractional:Bool=false)->String {

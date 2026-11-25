@@ -22,6 +22,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     @Published var refreshing = false
     var presentMessage: ((AppMessage) -> Void)?
     private var startupMessage: AppMessage?
+    var collectorNotificationReceipts:[String]?
+    var queuedCollectorNotifications=Set<String>()
     private var lastSaveError: String?
     let native:NativeSources
     let sharing:SourceSharing
@@ -388,6 +390,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         defer { refreshing=false }
         if !document.previewMode {
             await refreshFeeds()
+            notifyCollectorUpdates()
             var reported=document.reportedBlockedSessions
             reported.ingest(feedRows(),connectedHostIDs:Set(feeds.values.filter { $0.connected && ($0.snapshot?.errors?.isEmpty ?? true) }.compactMap{$0.snapshot?.host.id}))
             if reported != document.reportedBlockedSessions { document.reportedBlockedSessions=reported }

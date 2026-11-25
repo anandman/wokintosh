@@ -150,12 +150,14 @@ import SwiftUI
         guard let message=activeMessage else { return }
         openSettings()
         guard let settings else { activeMessage=nil;return }
-        let alert=NSAlert()
-        alert.messageText=message.title;alert.informativeText=message.message
-        alert.alertStyle=message.isError ? .warning : .informational
-        alert.addButton(withTitle:"OK")
-        alert.beginSheetModal(for:settings) { [weak self] _ in
-            Task { @MainActor in self?.activeMessage=nil;self?.presentNextMessage() }
+        let alert=message.makeAlert()
+        alert.beginSheetModal(for:settings) { [weak self] response in
+            Task { @MainActor in
+                guard let self else{return}
+                self.activeMessage=nil
+                self.store.respondToAppMessage(message,response:response)
+                self.presentNextMessage()
+            }
         }
     }
     func openSettings() {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 — 2026-11-24
+
+- Add a native collector-update popup with Review Updates and Later. Reminders cover remote collectors and local managed observers, and acknowledged updates stay quiet across refreshes and app relaunches.
+- Make System readings visually distinct with larger icons, bold colored labels and values, matching tinted backgrounds, and prominent USED/FREE qualifiers. RAM stays in GB.
+- Collector code is unchanged from 2.0.1; existing current collectors and iPhone/iPad builds do not need reinstalling.
+
 ## 2.0.1 — 2026-11-24
 
 - Classify Codex’s explicitly nonpersistent hook sessions as helpers, so temporary suggestion and safety jobs respect the existing Show Helpers setting. Missing transcript metadata remains compatible with older hooks.

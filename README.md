@@ -24,7 +24,7 @@ Wokintosh shows individual Codex and Claude Code sessions across machines over S
 2. In **Settings → Machines**, enter the machine name and SSH destination.
 3. Choose **Install / Update over SSH**. Wokintosh finds a compatible Python, copies the collector and verifies the connection. Existing hooks and collector state are preserved.
 
-Settings → Machines reports collector update availability, including a separately installed status observer. Older collectors show an unknown version until updated. A dashboard reminder opens Machines; updates happen only when you choose **Update**. An existing private Wokintosh-managed observer copy is backed up and refreshed as part of a remote update.
+Settings → Machines reports collector update availability, including a separately installed status observer. Older collectors show an unknown version until updated. A popup offers **Review Updates** or **Later**, and the dashboard reminder remains available. Updates happen only when you choose **Update** in Machines. An existing private Wokintosh-managed observer copy is backed up and refreshed as part of a remote update.
 
 The remote machine needs **Python 3.10 or later**. Versioned installations are detected even when the default `python3` is older. Agent and system collection uses SSH and needs no remote GUI, account, API key or listening server. Optional iPhone and iPad publishing on the display Mac is a separate feature described below.
 
