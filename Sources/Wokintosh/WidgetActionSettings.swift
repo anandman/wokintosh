@@ -9,21 +9,19 @@ struct WidgetActionSettings: View {
     @State private var errorText: String?
 
     private enum ApplicationSlot {
-        case widget, codex, claude
+        case widget, agent(AgentProvider)
 
         var chooserIdentifier: String {
             switch self {
             case .widget: return "widgetActionAppChooser"
-            case .codex: return "widgetActionCodexAppChooser"
-            case .claude: return "widgetActionClaudeAppChooser"
+            case .agent(let provider): return "widgetAction\(provider.rawValue.capitalized)AppChooser"
             }
         }
 
         var label: String {
             switch self {
             case .widget: return "Application"
-            case .codex: return "Codex app"
-            case .claude: return "Claude Code app"
+            case .agent(let provider): return "\(provider.title) app"
             }
         }
     }
@@ -66,8 +64,9 @@ struct WidgetActionSettings: View {
             if currentWidget.action.kind != .none {
                 Section("Test action") {
                     if currentWidget.action.kind == .openAgentApp {
-                        testButton("Test Codex App", provider: "codex", identifier: "widgetActionTestCodex")
-                        testButton("Test Claude App", provider: "claude", identifier: "widgetActionTestClaude")
+                        ForEach(AgentProvider.allCases) { provider in
+                            testButton("Test \(provider.name) App", provider: provider.rawValue, identifier: "widgetActionTest\(provider.rawValue.capitalized)")
+                        }
                     } else {
                         testButton("Test Action", identifier: "widgetActionTest")
                     }
@@ -117,8 +116,7 @@ struct WidgetActionSettings: View {
             }
         case .openAgentApp:
             Section("Harness apps") {
-                applicationControls(.codex)
-                applicationControls(.claude)
+                ForEach(AgentProvider.allCases) { provider in applicationControls(.agent(provider)) }
                 Text("Uses the clicked session’s Mac link when its collector supplies one, with the chosen harness app as a backup. Remote sessions must be reachable in that app. Opening a session does not mark it reviewed.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -181,16 +179,19 @@ struct WidgetActionSettings: View {
         let action = currentWidget.action
         switch slot {
         case .widget: return ApplicationChoice(bundleID: action.applicationBundleID, name: action.applicationName)
-        case .codex: return ApplicationChoice(bundleID: action.codexBundleID, name: action.codexApplicationName)
-        case .claude: return ApplicationChoice(bundleID: action.claudeBundleID, name: action.claudeApplicationName)
+        case .agent(let provider):
+            let choice = action.applicationChoice(for: provider.rawValue)
+            return ApplicationChoice(bundleID: choice.bundleID, name: choice.name)
         }
     }
 
     private func fallbackName(for slot: ApplicationSlot) -> String {
         let choice = applicationChoice(for: slot)
         if choice.bundleID.isEmpty { return "None" }
-        if slot == .codex, choice.bundleID == "com.openai.codex" { return "Codex" }
-        if slot == .claude, choice.bundleID == "com.anthropic.claudefordesktop" { return "Claude" }
+        if case .agent(let provider) = slot {
+            if provider == .codex, choice.bundleID == "com.openai.codex" { return "Codex" }
+            if provider == .claude, choice.bundleID == "com.anthropic.claudefordesktop" { return "Claude" }
+        }
         return choice.bundleID
     }
 
@@ -226,12 +227,8 @@ struct WidgetActionSettings: View {
             case .widget:
                 value.action.applicationBundleID = choice.bundleID
                 value.action.applicationName = choice.name
-            case .codex:
-                value.action.codexBundleID = choice.bundleID
-                value.action.codexApplicationName = choice.name
-            case .claude:
-                value.action.claudeBundleID = choice.bundleID
-                value.action.claudeApplicationName = choice.name
+            case .agent(let provider):
+                value.action.setApplicationChoice(ProviderApplication(bundleID: choice.bundleID, name: choice.name), for: provider.rawValue)
             }
         }
     }

@@ -41,6 +41,24 @@ final class PublishedWidgetsTests:XCTestCase {
         XCTAssertNil(route.resolve(in:other))
         XCTAssertNil(PhoneRoute(url:URL(string:"wokintosh://session?url=claude://code/anything")!))
     }
+    func testAdditionalProvidersKeepDistinctIdentitiesAndNullableLinksThroughPublishing() throws {
+        let rows = ["codex", "claude", "antigravity", "opencode"].map { provider -> SessionRow in
+            var value = row("same-id")
+            value.session.provider = provider
+            return value
+        }
+        let widget = PublishedWidget(id: UUID(), name: "Agents", agents: payload(rows))
+        let feed = PublishedWidgetFeed(publisherID: UUID(), publisherName: "Display", publishedAt: now, widgets: [widget])
+        let recovered = try PublishedWidgetFeed.decode(feed.encoded())
+        let published = try XCTUnwrap(recovered.widgets.first?.agents?.rows)
+        XCTAssertEqual(Set(published.map(\.session.provider)), Set(["codex", "claude", "antigravity", "opencode"]))
+        XCTAssertEqual(Set(published.map(\.id)).count, 4)
+        for row in published {
+            let route = PhoneRoute(publisherID: recovered.publisherID, widgetID: widget.id, rowID: row.id)
+            XCTAssertEqual(route.resolve(in: recovered)?.session.provider, row.session.provider)
+            XCTAssertNil(row.session.openURLs)
+        }
+    }
     func testUnknownWidgetVersionsAndMalformedNeighborsAreIndependentlyIgnored() throws {
         let widget=PublishedWidget(id:UUID(),name:"Agents",agents:payload([row("valid")]))
         let feed=PublishedWidgetFeed(publisherID:UUID(),publisherName:"Display",publishedAt:now,widgets:[widget])

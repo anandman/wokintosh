@@ -17,6 +17,13 @@ public enum WidgetActionError:Error,LocalizedError,Equatable {
         }
     }
 }
+/// A saved local app fallback; collector-supplied session links take precedence.
+public struct ProviderApplication: Codable, Equatable, Sendable {
+    public var bundleID: String
+    public var name: String
+    public init(bundleID: String = "", name: String = "") { self.bundleID = bundleID; self.name = name }
+}
+
 /// Each widget owns its action; older layouts and unfamiliar future kinds stay inert.
 public struct WidgetAction:Codable,Equatable,Sendable {
     public var kind:WidgetActionKind = .none
@@ -27,10 +34,11 @@ public struct WidgetAction:Codable,Equatable,Sendable {
     public var codexApplicationName=""
     public var claudeBundleID="com.anthropic.claudefordesktop"
     public var claudeApplicationName=""
+    public var providerApplications: [String: ProviderApplication] = [:]
     public init(kind:WidgetActionKind = .none,applicationBundleID:String="",applicationName:String="",url:String="") {
         self.kind=kind;self.applicationBundleID=applicationBundleID;self.applicationName=applicationName;self.url=url
     }
-    private enum CodingKeys:String,CodingKey {case kind,applicationBundleID,applicationName,url,codexBundleID,codexApplicationName,claudeBundleID,claudeApplicationName}
+    private enum CodingKeys:String,CodingKey {case kind,applicationBundleID,applicationName,url,codexBundleID,codexApplicationName,claudeBundleID,claudeApplicationName,providerApplications}
     public init(from decoder:Decoder)throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         let raw=(try? c.decode(String.self,forKey:.kind)) ?? "none"
@@ -42,6 +50,21 @@ public struct WidgetAction:Codable,Equatable,Sendable {
         codexApplicationName=(try? c.decode(String.self,forKey:.codexApplicationName)) ?? ""
         claudeBundleID=(try? c.decode(String.self,forKey:.claudeBundleID)) ?? "com.anthropic.claudefordesktop"
         claudeApplicationName=(try? c.decode(String.self,forKey:.claudeApplicationName)) ?? ""
+        providerApplications=(try? c.decode([String:ProviderApplication].self,forKey:.providerApplications)) ?? [:]
+    }
+    public func applicationChoice(for provider: String) -> ProviderApplication {
+        switch provider {
+        case "codex": return ProviderApplication(bundleID: codexBundleID, name: codexApplicationName)
+        case "claude": return ProviderApplication(bundleID: claudeBundleID, name: claudeApplicationName)
+        default: return providerApplications[provider] ?? ProviderApplication()
+        }
+    }
+    public mutating func setApplicationChoice(_ choice: ProviderApplication, for provider: String) {
+        switch provider {
+        case "codex": codexBundleID = choice.bundleID; codexApplicationName = choice.name
+        case "claude": claudeBundleID = choice.bundleID; claudeApplicationName = choice.name
+        default: providerApplications[provider] = choice
+        }
     }
     public func target(provider:String?=nil,session:AgentSession?=nil)throws->WidgetActionTarget? {
         switch kind {
@@ -49,11 +72,8 @@ public struct WidgetAction:Codable,Equatable,Sendable {
         case .openApplication:return try application(applicationBundleID)
         case .openAgentApp:
             if let url=session?.openURLs?.macOS?.url {return .link(url)}
-            switch provider {
-            case "codex":return try application(codexBundleID)
-            case "claude":return try application(claudeBundleID)
-            default:throw WidgetActionError.unknownProvider
-            }
+            guard let provider, AgentProvider(rawValue: provider) != nil || providerApplications[provider] != nil else { throw WidgetActionError.unknownProvider }
+            return try application(applicationChoice(for: provider).bundleID)
         case .openURL:
             let text=url.trimmingCharacters(in:.whitespacesAndNewlines)
             guard !text.isEmpty,text.count<=4096,text.rangeOfCharacter(from:.controlCharacters)==nil,

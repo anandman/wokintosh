@@ -21,7 +21,7 @@ struct BackgroundTaskSheet:View {
                     ProviderMark(provider:row.session.provider).frame(width:28,height:28)
                     VStack(alignment:.leading,spacing:3) {
                         Text(row.session.title).font(retroFont(21))
-                        Text(row.hostName+" · "+row.session.statusLabel).font(retroFont(15,bold:false)).foregroundStyle(.secondary)
+                        Text(row.session.providerTitle+" · "+row.hostName+" · "+row.session.statusLabel).font(retroFont(15,bold:false)).foregroundStyle(.secondary)
                     }
                 }
                 ScrollView {

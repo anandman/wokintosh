@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WokintoshCore
 
 // Same palette and provider artwork as the desktop's RetroChrome.swift.
 enum PhonePalette {
@@ -19,26 +20,40 @@ enum PhonePalette {
         .custom(bold ? "Arial-BoldMT" : "ArialMT",size:size,relativeTo:style)
     }
 }
+private final class PhoneProviderResourceBundle: NSObject {}
 enum PhoneProviderArtwork {
     // WidgetKit budgets the source raster, even when SwiftUI displays it at 22 pt.
     // Keep the desktop artwork and cache a thumbnail sharp enough for a 3× display.
-    private static let codex=UIImage(named:"PhoneCodex").flatMap(thumbnail)
-    private static let claude=UIImage(named:"PhoneClaude").flatMap(thumbnail)
+    private static let bundle=Bundle(for:PhoneProviderResourceBundle.self)
+    private static let codex=UIImage(named:"PhoneCodex",in:bundle,compatibleWith:nil).flatMap(thumbnail)
+    private static let claude=UIImage(named:"PhoneClaude",in:bundle,compatibleWith:nil).flatMap(thumbnail)
+    private static let antigravity=UIImage(named:"PhoneAntigravity",in:bundle,compatibleWith:nil).flatMap(thumbnail)
+    private static let opencode=UIImage(named:"PhoneOpenCode",in:bundle,compatibleWith:UITraitCollection(userInterfaceStyle:.light)).flatMap(thumbnail)
+    private static let opencodeDark=UIImage(named:"PhoneOpenCode",in:bundle,compatibleWith:UITraitCollection(userInterfaceStyle:.dark)).flatMap(thumbnail)
     static func thumbnail(_ image:UIImage)->UIImage? {
         image.preparingThumbnail(of:CGSize(width:66,height:66))
     }
-    static func image(for provider:String)->UIImage? {provider=="codex" ? codex : claude}
+    static func image(for provider:String,dark:Bool=false)->UIImage? {
+        switch AgentProvider(rawValue:provider) {
+        case .codex:return codex
+        case .claude:return claude
+        case .antigravity:return antigravity
+        case .opencode:return dark ? opencodeDark : opencode
+        case nil:return nil
+        }
+    }
 }
 struct PhoneProviderMark:View {
     let provider:String
+    @Environment(\.colorScheme) private var colorScheme
     var body:some View {
         Group {
-            if let image=PhoneProviderArtwork.image(for:provider) {
+            if let image=PhoneProviderArtwork.image(for:provider,dark:colorScheme == .dark) {
                 Image(uiImage:image).resizable().scaledToFit()
             } else {
-                Image(systemName:provider=="codex" ? "terminal" : "sparkle").resizable().scaledToFit()
+                Image(systemName:AgentProvider(rawValue:provider)?.symbol ?? "terminal").resizable().scaledToFit()
             }
-        }.accessibilityLabel(provider=="codex" ? "Codex" : "Claude Code")
+        }.accessibilityLabel(AgentProvider.title(for:provider))
     }
 }
 struct PhoneStripes:View {

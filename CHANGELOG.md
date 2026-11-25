@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0 — 2026-11-24
+
+- Add Antigravity App/CLI and OpenCode App/CLI as explicitly Untested integrations, with fixture-tested metadata collection, observational installation and conservative state handling. Antigravity IDE is excluded.
+- Add official Antigravity/OpenCode logos across Mac, iPhone, iPad and widgets, including the dark OpenCode mark for dark widgets.
+- Extend provider filters, per-provider app choices, names, accessibility and shared Done/Blocked controls. New-provider mobile links are optional and require explicit verified HTTPS configuration.
+- Include the additional-provider setup and limitations guide in release packages. Neither integration has live-provider end-to-end verification.
+
+
 ## 2.0.5 — 2026-11-24
 
 - Add Update All in Machines for pending collector and existing local status-observer updates, processed one machine at a time.

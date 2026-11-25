@@ -57,6 +57,7 @@ struct PhoneSessionDetail:View {
             PhoneRetroWindow(title:"Session details") {
                 VStack(alignment:.leading,spacing:16) {
                     PhoneSessionInformation(row:row,offline:store.snapshot.state == .offline)
+                    Text(row.session.providerTitle).font(PhonePalette.font(15,bold:true)).foregroundStyle(PhonePalette.secondary)
                     if let date=row.sourceObservedAt {Text("As of \(date.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(PhonePalette.secondary)}
                     if row.session.openURLs?.iOS?.url != nil {
                         Button("Open session") {store.openSelectedSession()}.buttonStyle(PhoneRetroButtonStyle(prominent:true))
@@ -66,7 +67,7 @@ struct PhoneSessionDetail:View {
                         if let note=store.navigationMessage {Text(note).foregroundStyle(PhonePalette.attention)}
                         Text("Opening a session does not review its Done notice.").font(.caption).foregroundStyle(PhonePalette.secondary)
                     } else {
-                        Text("No mobile link is available yet. Update Wokintosh’s collector on \(row.hostName); Claude sessions also need Remote Control connected.").foregroundStyle(PhonePalette.secondary)
+                        Text(row.session.unavailableMobileLinkMessage).foregroundStyle(PhonePalette.secondary)
                     }
                 }.padding(16).frame(maxWidth:.infinity,alignment:.leading)
             }

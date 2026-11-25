@@ -463,7 +463,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
 
     func installHooks(provider: String) async {
-        guard ["codex", "claude"].contains(provider), let python = await localPython.path(), let collector = collectorURL else { presentMessage?(AppMessage(title:"Collector Unavailable",message:"Install Python 3.10 or later, then try enabling observers again after 30 seconds.",isError:true)); return }
+        guard AgentProvider(rawValue: provider) != nil, let python = await localPython.path(), let collector = collectorURL else { presentMessage?(AppMessage(title:"Collector Unavailable",message:"Install Python 3.10 or later, then try enabling observers again after 30 seconds.",isError:true)); return }
         do {
             let helpers=dataDirectory.appendingPathComponent("bin",isDirectory:true)
             try FileManager.default.createDirectory(at:helpers,withIntermediateDirectories:true)
@@ -472,14 +472,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             try FileManager.default.setAttributes([.posixPermissions:0o700],ofItemAtPath:installed.path)
             let result = try await Task.detached { try CommandRunner.run(python, arguments: [installed.path, "install-hooks", "--provider", provider], timeout: 5) }.value
             let output=String(data:result,encoding:.utf8) ?? "Observers updated."
-            let title=provider == "codex" ? "Review Codex Observers" : "Claude Code Observers Updated"
+            let title=provider == "codex" ? "Review Codex Observers" : "\(AgentProvider.name(for: provider)) Observers Updated"
             presentMessage?(AppMessage(title:title,message:output))
         } catch { presentMessage?(AppMessage(title:"Could Not Update Observers",message:error.localizedDescription,isError:true)) }
     }
     func previewRows() -> [SessionRow] {
         let names=["Calendar sync", "Collector tests", "Window layout", "Auth review", "Acceptance testing", "Music metadata", "Layout persistence", "Release notes", "Parser coverage", "Linux collector", "Artwork cache", "Window placement"]
         return names.enumerated().map { index, title in
-            let provider = [0,3,5,7,9,11].contains(index) ? "claude" : "codex"
+            let provider = index == 5 ? "antigravity" : index == 6 ? "opencode" : [0,3,7,9,11].contains(index) ? "claude" : "codex"
             return SessionRow(hostID: index == 4 || index == 5 ? "build-host" : "dev", hostName: index == 4 || index == 5 ? "Build Mac" : "Dev Mini", session: AgentSession(id: "preview-\(index)", provider: provider, title: title, project: "wokintosh", state: index < 2 ? .needsAttention : (index < 4 ? .finished : (index == 4 ? .blocked : .working)), updatedAt: Date().addingTimeInterval(index == 3 ? -7200 : Double(-index*17)), activity: index < 2 ? "Approval needed" : (index < 4 ? "Turn completed" : (index == 4 ? "Manual acceptance pending" : "Working"))),completionPending:index>=2 && index<4,completionObservedAt:Date().addingTimeInterval(index == 3 ? -7200 : -60))
         }
     }

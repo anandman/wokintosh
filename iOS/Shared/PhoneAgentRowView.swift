@@ -17,6 +17,7 @@ struct PhoneAgentRowView:View {
                 HStack(spacing:4) {
                     Text(row.hostName+" · "+(row.session.project.isEmpty ? "No project" : row.session.project))
                         .foregroundStyle(.secondary).lineLimit(1)
+                    if row.session.hasUntestedProvider {Text("Untested").foregroundStyle(.secondary).fixedSize(horizontal:true,vertical:false)}
                     if !showFreshness,let freshnessLabel {
                         Text(freshnessLabel).foregroundStyle(.orange).fixedSize(horizontal:true,vertical:false)
                     }

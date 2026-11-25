@@ -87,7 +87,7 @@ struct AgentWidget: View {
                 WidgetActionArea(store:store,widget:widget,enabled:actionsEnabled,provider:row.session.provider,session:row.session) {
                     HStack(spacing:wide ? 10 : 8) {
                     ProviderMark(provider:row.session.provider).frame(width:28*t,height:28*t)
-                            .accessibilityLabel(row.session.provider == "codex" ? "Codex" : "Claude Code")
+                            .accessibilityLabel(row.session.providerTitle)
                         if wide {
                             Text(shortTitle(row.session.title)).font(retroFont(25*t)).lineLimit(1).frame(maxWidth:.infinity,alignment:.leading).accessibilityLabel(row.session.title)
                             Text(row.hostName+(row.session.isHelper || row.session.parentId != nil ? " · Helper" : ""))
@@ -103,6 +103,10 @@ struct AgentWidget: View {
                 state(row,t:t,font:22).frame(width:156*t,alignment:.leading)
             }
         }.contextMenu {
+            if row.session.hasUntestedProvider {
+                Text(row.session.providerTitle)
+                Divider()
+            }
             Button("Background Tasks…") {backgroundSelection=row}.disabled(store.document.previewMode)
             Divider()
             if widget.action.kind != .none {
@@ -121,7 +125,7 @@ struct AgentWidget: View {
     }
     func metadata(_ row:SessionRow)->String {
         let helper=row.session.isHelper || row.session.parentId != nil ? " · Helper" : ""
-        return "\(row.session.provider == "codex" ? "Codex" : "Claude Code") · \(row.hostName)\(helper)"
+        return "\(row.session.providerTitle) · \(row.hostName)\(helper)"
     }
     func shortTitle(_ title:String)->String {
         title.count>20 ? String(title.prefix(20))+"…" : title

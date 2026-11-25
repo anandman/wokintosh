@@ -51,7 +51,7 @@ struct PhoneRootView:View {
                     Image("PhoneMac").resizable().interpolation(.none).scaledToFit().frame(width:48,height:48).accessibilityHidden(true)
                     VStack(alignment:.leading,spacing:5) {
                         Text(store.snapshot.state == .authorizationRequired ? "Pair with your Mac again" : "Your agents, at a glance.").font(PhonePalette.font(24,bold:true,relativeTo:.title2))
-                        Text("Claude Code and Codex, across your machines.").foregroundStyle(PhonePalette.secondary)
+                        Text("Coding agents, across your machines.").foregroundStyle(PhonePalette.secondary)
                     }
                 }
                 Text("Connect to your publishing Mac in Settings to see your Agent widgets here.")

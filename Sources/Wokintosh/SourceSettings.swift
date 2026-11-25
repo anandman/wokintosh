@@ -186,9 +186,12 @@ struct MachinesSettingsView: View {
                 Text("Optional named observers report status and preserve existing hooks with backups. These buttons update this Mac only. They never approve, deny, or continue agent work.")
                     .font(.caption).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 8) {
-                    Button("Enable / Update Codex Hooks…") { confirmHooks = "codex" }
-                    Button("Enable / Update Claude Code Hooks…") { confirmHooks = "claude" }
+                    ForEach(AgentProvider.allCases) { provider in
+                        Button("Enable / Update \(provider.title) Observer…") { confirmHooks = provider.rawValue }
+                    }
                 }.disabled(working)
+                Text("Antigravity App/CLI and OpenCode App/CLI are Untested. Antigravity uses lifecycle hooks; OpenCode uses a server plugin. Restart the provider after enabling its observer. Antigravity IDE collection is excluded.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("In Codex /hooks, review each new or changed Wokintosh event command that needs trust. Reload or restart affected clients after updating observers.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -216,10 +219,10 @@ struct MachinesSettingsView: View {
         .confirmationDialog("Enable or update observers on This Mac?", isPresented: Binding(
             get: { confirmHooks != nil }, set: { if !$0 { confirmHooks = nil } }
         ), titleVisibility: .visible) {
-            Button("Enable / Update \(confirmHooks == "codex" ? "Codex" : "Claude Code") Hooks") {
+            Button("Enable / Update \(AgentProvider.name(for: confirmHooks ?? "")) Observer") {
                 if let provider = confirmHooks {
                     otherWorking = true
-                    progress = "Updating \(provider == "codex" ? "Codex" : "Claude Code") observers on This Mac…"
+                    progress = "Updating \(AgentProvider.name(for: provider)) observers on This Mac…"
                     Task {
                         defer { otherWorking = false; progress = "" }
                         await store.installHooks(provider: provider)
@@ -229,9 +232,21 @@ struct MachinesSettingsView: View {
             }
             Button("Cancel", role: .cancel) { confirmHooks = nil }
         } message: {
-            Text(confirmHooks == "codex"
-                 ? "Wokintosh adds observational event commands on this Mac and backs up existing settings. Review every new or changed Wokintosh command listed by Codex in /hooks. Restart affected sessions after updating."
-                 : "Wokintosh adds observational Claude Code event commands on this Mac and backs up existing settings. Reload or restart affected Claude Code clients after updating.")
+            Text(observerConfirmation)
+        }
+    }
+
+    private var observerConfirmation: String {
+        switch AgentProvider(rawValue: confirmHooks ?? "") {
+        case .codex:
+            return "Wokintosh adds observational event commands on this Mac and backs up existing settings. Review every new or changed Wokintosh command listed by Codex in /hooks. Restart affected sessions after updating."
+        case .claude:
+            return "Wokintosh adds observational Claude Code event commands on this Mac and backs up existing settings. Reload or restart affected Claude Code clients after updating."
+        case .antigravity:
+            return "Add named observational hooks shared by Antigravity App and CLI, with backups of existing settings. Reload or restart the provider. This integration is Untested with live sessions; Antigravity IDE evidence is ignored."
+        case .opencode:
+            return "Install the Wokintosh OpenCode server plugin and preserve existing settings with backups. The plugin observes session metadata for App and CLI. Restart OpenCode after installation. This integration is Untested with live sessions."
+        case nil: return "Choose a provider observer."
         }
     }
 

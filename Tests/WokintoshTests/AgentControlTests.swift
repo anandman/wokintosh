@@ -9,7 +9,7 @@ private final class AgentTestCredentials:PublisherCredentialStore {
 }
 @MainActor final class AgentControlTests:XCTestCase {
     let now=Date()
-    func fixture()throws->(DashboardStore,URL,Widget) {
+    func fixture(provider:String="codex")throws->(DashboardStore,URL,Widget) {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let publisher=WidgetPublisher(directory:root,credentials:AgentTestCredentials(),servesNetwork:false)
         let store=DashboardStore(dataDirectory:root,publisher:publisher)
@@ -19,11 +19,11 @@ private final class AgentTestCredentials:PublisherCredentialStore {
         try publisher.setOptions(options,widgets:[widget])
         let stamp=ISO8601DateFormatter().string(from:now)
         let data=Data("""
-        {"schemaVersion":1,"host":{"id":"host","name":"Host","platform":"macos"},"generatedAt":"\(stamp)","sessions":[{"id":"session","provider":"codex","title":"Task","project":"Project","state":"working","updatedAt":"\(stamp)"}],"system":{}}
+        {"schemaVersion":1,"host":{"id":"host","name":"Host","platform":"macos"},"generatedAt":"\(stamp)","sessions":[{"id":"session","provider":"\(provider)","title":"Task","project":"Project","state":"working","updatedAt":"\(stamp)"}],"system":{}}
         """.utf8)
         store.feeds["host"]=FeedStatus(name:"Host",snapshot:try Snapshot.decode(data))
         var tracker=CompletionTracker();tracker.ingest([],connectedHostIDs:["host"],at:now.addingTimeInterval(-2))
-        tracker.ingest([SessionRow(hostID:"host",hostName:"Host",session:AgentSession(id:"session",provider:"codex",title:"Task",project:"Project",state:.finished,updatedAt:now))],at:now)
+        tracker.ingest([SessionRow(hostID:"host",hostName:"Host",session:AgentSession(id:"session",provider:provider,title:"Task",project:"Project",state:.finished,updatedAt:now))],at:now)
         store.document.completions=tracker;store.publishWidgets(at:now)
         return(store,root,widget)
     }
@@ -74,6 +74,19 @@ private final class AgentTestCredentials:PublisherCredentialStore {
         s.markBlocked(row);s.clearManualBlocked(row);s.publishWidgets(at:now)
         XCTAssertThrowsError(try s.applyAgentControl(beforeDesktop,at:now))
         XCTAssertTrue(s.document.blockedSessions.records.isEmpty)
+    }
+    func testAdditionalProvidersShareDoneReviewAndManualBlockedControls() throws {
+        for provider in ["antigravity", "opencode"] {
+            let (store, root, _) = try fixture(provider: provider)
+            defer { try? FileManager.default.removeItem(at: root) }
+            XCTAssertEqual(try feed(store).widgets.first?.agents?.rows.first?.session.provider, provider)
+            _ = try store.applyAgentControl(command(store, action: .reviewDone), at: now)
+            XCTAssertTrue(store.document.completions.pending.isEmpty)
+            _ = try store.applyAgentControl(command(store, action: .markBlocked), at: now)
+            XCTAssertEqual(store.document.blockedSessions.records.count, 1)
+            _ = try store.applyAgentControl(command(store, action: .clearManualBlocked), at: now)
+            XCTAssertTrue(store.document.blockedSessions.records.isEmpty)
+        }
     }
     func testEarlierDoneBulkKeepsMainDoneUnread()throws {
         let(s,root,widget)=try fixture();defer{try? FileManager.default.removeItem(at:root)}

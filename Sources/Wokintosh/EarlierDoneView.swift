@@ -22,7 +22,7 @@ struct EarlierDoneView:View {
                             ForEach(rows) {row in
                                 VStack(alignment:.leading,spacing:6) {
                                     Text(row.session.title).font(.headline).textSelection(.enabled)
-                                    Text("\(row.session.provider == "codex" ? "Codex" : "Claude Code") · \(row.hostName)").foregroundStyle(.secondary)
+                                    Text("\(row.session.providerTitle) · \(row.hostName)").foregroundStyle(.secondary)
                                     Text("Completed \(row.session.updatedAt.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.secondary)
                                     HStack {
                                         if let widget,widget.action.kind != .none {

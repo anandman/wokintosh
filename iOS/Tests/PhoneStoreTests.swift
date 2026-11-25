@@ -100,7 +100,7 @@ final class PhoneStoreTests:XCTestCase {
         XCTAssertEqual(opened.map(\.absoluteString),["codex://threads/fixture"])
     }
     @MainActor func testSuccessfulSessionTapsNeverPresentDetailsForEitherProvider() async throws {
-        for (provider,url) in [("codex","codex://threads/fixture"),("claude","claude://code/session_fixture123456789")] {
+        for (provider,url) in [("codex","codex://threads/fixture"),("claude","claude://code/session_fixture123456789"),("antigravity","https://antigravity.google.com/r/fixture?p=c%2Fconversation"),("opencode","https://example.ts.net/session/fixture")] {
             let fixture=try linkedFixture(provider:provider,url:url)
             defer {try? FileManager.default.removeItem(at:fixture.repository.cache.directory)}
             var callbacks:[PhoneStore.LaunchCompletion]=[],opened:[URL]=[]

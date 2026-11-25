@@ -1,6 +1,6 @@
 # Wokintosh
 
-A Color Classic-style dashboard for Codex and Claude Code agents, music, calendar, weather and system readings. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps), with its **5-inch 1280 × 720 display**.
+A Color Classic-style dashboard for coding agents, music, calendar, weather and system readings. Codex and Claude Code are supported, with **Untested Antigravity App/CLI and OpenCode App/CLI integrations** in 2.1. Designed for and tested on the [Wokyis M5 (10Gbps) retro docking station](https://wokyis.com/products/wokyis-m5-10gbps), with its **5-inch 1280 × 720 display**.
 
 ![Wokintosh preview showing Codex and Claude Code sessions across machines, attention and Done states, music, calendar and system readings](docs/images/dashboard.png)
 
@@ -22,7 +22,7 @@ Wokintosh checks for updates automatically and can download them in the backgrou
 
 ## Remote machines
 
-Wokintosh shows individual Codex and Claude Code sessions across machines over SSH.
+Wokintosh shows individual coding-agent sessions across machines over SSH. **Antigravity App/CLI and OpenCode App/CLI are Untested integrations**: adapters have fixture coverage, but have not been verified end to end with live provider sessions. Antigravity IDE is excluded. See [additional-provider setup and limitations](docs/PROVIDERS.md).
 
 1. Make sure your SSH alias or `user@host` already connects from Terminal using keys and trusted host configuration.
 2. In **Settings → Machines**, enter the machine name and SSH destination.
@@ -36,7 +36,7 @@ Existing sessions are discovered automatically. Optional observer hooks improve 
 
 ## iPhone and iPad widgets
 
-**Wokintosh 2.0** adds private mobile publishing and an iPhone/iPad companion. See the [release notes](RELEASE_NOTES.md).
+**Wokintosh 2.0 and later** provide private mobile publishing and an iPhone/iPad companion. See the [release notes](RELEASE_NOTES.md).
 
 The universal iPhone/iPad app and medium/large Home Screen widgets are available as source builds for direct installation, including a full-width extra-large iPad widget and a tall option where iOS/iPadOS 27+ offers it. Session taps open the official app directly; missing or failed links show details. The download above installs the Mac app; build and install the mobile companion separately with Xcode. See the [build, installation and pairing guide](docs/IPHONE.md).
 
@@ -73,6 +73,8 @@ Optional **Allow Agent controls** lets paired devices review Done, change Wokint
 The app uses the desktop’s classic Mac palette and provider icons. Tap a session to open it, tap the Done checkmark to review it, or long-press a row for manual Blocked controls and **Background Tasks…**. Runner choices sync through the display Mac; ordinary session taps still open the provider immediately. Connection and widget selection live in Settings (the Mac icon). Home Screen widgets keep compact classic styling, automatic dark appearance and a Done checkmark; iOS owns their long-press menu.
 
 The paired device mirrors the selected widget’s filters and attention-first ordering. It shows an **As of** time and stale/offline states; iOS schedules widget refreshes and may take longer than the requested 15 minutes. Viewing or opening a session does not review Done notices, send a prompt or approve an action.
+
+Antigravity and OpenCode use their official logos on Mac and mobile, including the dark OpenCode mark in dark widgets. Their sessions retain the same Done review and manual Blocked controls; mobile links remain unavailable until configured with a verified provider web URL. See [provider setup](docs/PROVIDERS.md).
 
 Session links come from each collector. Claude opens with `claude://code/{bridge-id}`, with HTTPS as a backup; its Remote Control bridge ID is captured by observational hooks when available. This requires Remote Control to be connected and a Claude Code version exposing `CLAUDE_CODE_BRIDGE_SESSION_ID` (v2.1.199+). Wokintosh does not enable Remote Control or change `remoteControlAtStartup` automatically. Codex uses `codex://threads/{thread-id}` with the original thread UUID; this iOS route was verified on the initial user’s setup and remains an undocumented mobile contract. Missing links stay unavailable rather than guessing another session.
 

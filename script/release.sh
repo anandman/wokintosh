@@ -55,7 +55,7 @@ for target in "$PAYLOAD" "$RELEASE_STAGE/$COLLECTOR_NAME"; do
        "$ROOT_DIR/CHANGELOG.md" "$target/"
     mkdir -p "$target/docs/images"
     cp "$ROOT_DIR/docs/images/"*.png "$target/docs/images/"
-    cp "$ROOT_DIR/docs/ADVANCED.md" "$ROOT_DIR/docs/IPHONE.md" "$target/docs/"
+    cp "$ROOT_DIR/docs/ADVANCED.md" "$ROOT_DIR/docs/IPHONE.md" "$ROOT_DIR/docs/PROVIDERS.md" "$target/docs/"
 done
 ditto -c -k --norsrc --keepParent "$RELEASE_STAGE/$COLLECTOR_NAME" "$COLLECTOR_ZIP"
 hdiutil create -volname "Wokintosh $WOKINTOSH_VERSION" -srcfolder "$PAYLOAD" -format UDZO -ov "$DMG"

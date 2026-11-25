@@ -136,3 +136,9 @@ Dark appearance follows the system:
 Tall family, where offered by iOS/iPadOS 27+:
 
 <img src="images/ios-widget-tall.png" alt="Tall Agent widget with sample sessions" width="320">
+
+## Antigravity and OpenCode in 2.1
+
+Antigravity App/CLI and OpenCode App/CLI are **Untested integrations**. The app and widgets show their official logos, Untested labels and the same Wokintosh review controls. Antigravity IDE is excluded. No live-provider end-to-end test has been performed.
+
+A missing mobile link opens session details with setup guidance. Configure a verified per-session HTTPS navigation link on the source machine using the [provider guide](PROVIDERS.md). Antigravity needs its Remote Control instance and conversation link; a conversation ID alone is insufficient. OpenCode needs an authenticated web interface reachable from the device. Wokintosh does not start or publish either service automatically.

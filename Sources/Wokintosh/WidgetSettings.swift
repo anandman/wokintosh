@@ -118,10 +118,11 @@ private struct WidgetContentSettings: View {
                         get: { widget.provider ?? "" },
                         set: { value in store.change(widget.id) { $0.provider = value.isEmpty ? nil : value } }
                     )) {
-                        Text("Codex + Claude Code").tag("")
-                        Text("Codex").tag("codex")
-                        Text("Claude Code").tag("claude")
+                        Text("All providers").tag("")
+                        ForEach(AgentProvider.allCases) { provider in Text(provider.title).tag(provider.rawValue) }
                     }
+                    Text("Antigravity App/CLI and OpenCode App/CLI are Untested integrations. Their setup and live status behavior have not been verified with active provider sessions.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Include reviewed or recent inactive sessions", isOn: Binding(
                         get: { widget.showFinished }, set: { value in store.change(widget.id) { $0.showFinished = value } }
                     ))

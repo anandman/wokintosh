@@ -26,8 +26,10 @@ import tempfile
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
+from contextlib import contextmanager
+from urllib.parse import urlsplit, parse_qsl, unquote
 
-COLLECTOR_VERSION = '2.0.4'
+COLLECTOR_VERSION = '2.1.0'
 MAX_COLLECTOR_BYTES = 1024 * 1024
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -53,6 +55,666 @@ MAX_GOAL_MARKERS = 512
 MAX_GOAL_MARKER_BYTES = 4096
 CODEX_BLOCKED_STATUSES = {'blocked', 'paused', 'usage_limited', 'budget_limited'}
 CODEX_GOAL_STATUSES = CODEX_BLOCKED_STATUSES | {'active', 'complete'}
+
+
+# Antigravity and OpenCode are observational integrations, fixture-tested only.
+ADDITIONAL_PROVIDERS = ('antigravity', 'opencode')
+PROVIDERS = ('codex', 'claude') + ADDITIONAL_PROVIDERS
+MAX_PROVIDER_BYTES = 256 * 1024
+MAX_PROVIDER_SESSIONS = 256
+ANTIGRAVITY_EVENTS = ('SessionStart', 'PreInvocation', 'PostInvocation', 'PreToolUse', 'PostToolUse', 'Stop')
+OPENCODE_EVENTS = ('session.created', 'session.renamed', 'session.forked', 'session.deleted',
+                   'session.execution.started', 'session.execution.succeeded', 'session.execution.failed',
+                   'session.execution.interrupted', 'session.idle', 'session.tool.called', 'session.tool.success',
+                   'session.tool.failed', 'session.step.started', 'session.shell.started', 'session.shell.ended',
+                   'permission.asked', 'permission.replied')
+
+
+def bounded_text(path, limit=MAX_PROVIDER_BYTES, dir_fd=None):
+    """Read one regular, non-symlink file; never block on a FIFO or follow state links."""
+    descriptor = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, 'O_NOFOLLOW', 0), dir_fd=dir_fd)
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+            return None
+        with os.fdopen(descriptor, 'rb') as stream:
+            descriptor = None
+            raw = stream.read(limit + 1)
+        return raw.decode('utf-8') if len(raw) <= limit else None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def bounded_json(path, limit=MAX_PROVIDER_BYTES, dir_fd=None):
+    content = bounded_text(path, limit, dir_fd)
+    try:
+        return json.loads(content) if content is not None else None
+    except (ValueError, RecursionError):
+        return None
+
+
+def safe_home_path(path, home):
+    """Provider paths must remain under the selected home, without symlink components."""
+    try:
+        path, home = Path(path).absolute(), Path(home).absolute()
+        parts = path.relative_to(home).parts
+        current = home
+        for part in parts:
+            if part in ('.', '..'):
+                return False
+            current = current / part
+            if current.is_symlink():
+                return False
+        return path.resolve().is_relative_to(home.resolve())
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
+def antigravity_path(event, home):
+    identity = canonical_thread_id(event.get('conversationId'))
+    raw = event.get('transcriptPath')
+    if not identity or not isinstance(raw, str) or len(raw) > 4096 or not raw.startswith('/'):
+        return None
+    path = Path(raw)
+    for flavor in ('antigravity', 'antigravity-cli'):
+        expected = home / '.gemini' / flavor / 'brain' / identity / '.system_generated/logs/transcript.jsonl'
+        if path == expected and safe_home_path(path, home):
+            return path
+    return None
+
+
+def discover_antigravity(home, now):
+    """Only documented filenames identify sessions; transcript contents are not a public schema."""
+    result = []
+    for flavor in ('antigravity', 'antigravity-cli'):
+        root = home / '.gemini' / flavor / 'brain'
+        if not safe_home_path(root, home):
+            continue
+        try:
+            with os.scandir(root) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= MAX_PROVIDER_SESSIONS:
+                        break
+                    identity = canonical_thread_id(entry.name)
+                    if not identity or not entry.is_dir(follow_symlinks=False):
+                        continue
+                    path = Path(entry.path) / '.system_generated/logs/transcript.jsonl'
+                    if not safe_home_path(path, home):
+                        continue
+                    try:
+                        info = path.stat()
+                        if not stat.S_ISREG(info.st_mode):
+                            continue
+                        updated = parse_time(info.st_mtime, now)
+                        if not 0 <= (now - updated).total_seconds() < 7 * 86400:
+                            continue
+                        session = base_session(identity, 'antigravity', '', updated)
+                        session['activity'] = 'Lifecycle hooks not observed'
+                        result.append(session)
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return result
+
+
+def explicit_https_url(value, provider=None, identity=None):
+    """User-supplied navigation metadata only: no auth, credential queries, fragments or controls."""
+    if (not isinstance(value, str) or not 1 <= len(value) <= 2048 or
+            re.search(r'[\s\x00-\x1f\x7f\ud800-\udfff]', value) or '\\' in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or
+                parsed.password is not None or parsed.fragment or
+                (parsed.port is not None and not 1 <= parsed.port <= 65535)):
+            return None
+        if re.search(r'[\x00-\x1f\x7f]', unquote(value)) or '%' in parsed.hostname:
+            return None
+        query = parse_qsl(parsed.query, keep_blank_values=True, max_num_fields=16)
+        if any(re.search(r'(token|password|passwd|secret|auth|credential|apikey|signature|^sig$|^code$)',
+                         re.sub(r'[^a-z0-9]', '', key.lower())) or len(key) > 64 or len(item) > 512
+               for key, item in query):
+            return None
+        decoded_path = parsed.path
+        for _ in range(8):
+            decoded = unquote(decoded_path)
+            if decoded == decoded_path:
+                break
+            decoded_path = decoded
+        if '%' in decoded_path or '\\' in decoded_path or re.search(r'[\s\x00-\x1f\x7f]', decoded_path):
+            return None
+        segments = []
+        for segment in decoded_path.split('/'):
+            if segment == '..':
+                if segments:
+                    segments.pop()
+            elif segment and segment != '.':
+                segments.append(segment)
+        if segments and segments[0].lower() in ('auth', 'oauth', 'login'):
+            return None
+        if provider == 'antigravity':
+            if (parsed.hostname != 'antigravity.google.com' or parsed.port not in (None, 443) or
+                    re.fullmatch(r'/r/[A-Za-z0-9._~-]{1,256}', decoded_path) is None or
+                    decoded_path.split('/')[-1] in ('.', '..') or
+                    query != [('p', 'c/' + str(identity))] or not canonical_thread_id(identity)):
+                return None
+        parsed.hostname.encode('idna')
+        return value
+    except (ValueError, UnicodeError):
+        return None
+
+
+def additional_provider_links(state_dir):
+    value = bounded_json(state_dir / 'provider-links.json')
+    if (not isinstance(value, dict) or value.get('version') != 1 or
+            not isinstance(value.get('sessions'), list) or len(value['sessions']) > MAX_PROVIDER_SESSIONS):
+        return {}
+    links = {}
+    for entry in value['sessions']:
+        if not isinstance(entry, dict) or entry.get('provider') not in ADDITIONAL_PROVIDERS:
+            continue
+        identity = entry.get('id')
+        if not isinstance(identity, str) or not identity or identity != clean(identity, 180):
+            continue
+        targets = {platform: {'primary': target} for platform in ('macOS', 'iOS')
+                   if (target := explicit_https_url(entry.get(platform), entry['provider'], identity)) is not None}
+        if targets:
+            links[(entry['provider'], identity)] = targets
+    return links
+
+
+def provider_text(value, limit=90):
+    """Display strings contain Unicode scalars; escaped lone surrogates cannot reach Swift."""
+    return clean(re.sub(r'[\ud800-\udfff]', '\ufffd', str(value or '')), limit)
+
+
+def opencode_identity(value):
+    return value if isinstance(value, str) and re.fullmatch(r'ses[A-Za-z0-9_-]{1,176}', value) else None
+
+
+def provider_event_id(value):
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,180}', value) else None
+
+
+def opencode_durable(value):
+    if (not isinstance(value, dict) or not provider_event_id(value.get('aggregateID')) or
+            type(value.get('seq')) is not int or not 0 <= value['seq'] <= 2**53 - 1 or
+            type(value.get('version')) is not int or not 1 <= value['version'] <= 1000000):
+        return None
+    return {key: value[key] for key in ('aggregateID', 'seq', 'version')}
+
+
+@contextmanager
+def provider_hook_store(home, state_dir, wait_seconds=0.2):
+    """Pin private directories with no-follow descriptors; lock contention is bounded."""
+    root_fd = hooks_fd = lock_fd = None
+    try:
+        if state_dir.is_symlink() or (state_dir.is_relative_to(home) and not safe_home_path(state_dir, home)):
+            raise ValueError('Unsafe observer state directory')
+        state_dir.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0)
+        root_fd = os.open(state_dir, flags)
+        if os.fstat(root_fd).st_uid != os.getuid():
+            raise ValueError('Observer state directory has a different owner')
+        lock_fd = os.open('.provider-hook.lock', os.O_RDWR | os.O_CREAT | os.O_NONBLOCK |
+                          getattr(os, 'O_NOFOLLOW', 0), 0o600, dir_fd=root_fd)
+        info = os.fstat(lock_fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+            raise ValueError('Observer lock must be an owned regular file')
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise ValueError('Observer lock unavailable') from None
+                time.sleep(0.01)
+        try:
+            os.mkdir('hooks', mode=0o700, dir_fd=root_fd)
+        except FileExistsError:
+            pass
+        hooks_fd = os.open('hooks', flags, dir_fd=root_fd)
+        if os.fstat(hooks_fd).st_uid != os.getuid():
+            raise ValueError('Observer hooks directory has a different owner')
+        yield hooks_fd
+    finally:
+        for descriptor in (hooks_fd, lock_fd, root_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
+def provider_atomic_json(directory_fd, name, value):
+    temporary = '.wokintosh-' + uuid.uuid4().hex
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         getattr(os, 'O_NOFOLLOW', 0), 0o600, dir_fd=directory_fd)
+    try:
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(value, stream, ensure_ascii=True, separators=(',', ':'))
+            stream.write('\n')
+        os.replace(temporary, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+
+
+def hook_summaries(state_dir):
+    """A linked hooks directory is not a source; reads stay pinned to the opened directory."""
+    descriptor = None
+    try:
+        if state_dir.is_symlink():
+            return
+        descriptor = os.open(state_dir / 'hooks', os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0))
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                if entry.name.endswith('.json') and entry.is_file(follow_symlinks=False):
+                    yield bounded_json(entry.name, MAX_CACHE_BYTES, dir_fd=descriptor)
+    except OSError:
+        return
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def normalized_opencode_private(value):
+    watermarks = value.get('_opencodeWatermarks', {})
+    ids = value.get('_opencodeEventIDs', [])
+    if not isinstance(watermarks, dict) or len(watermarks) > 8 or not isinstance(ids, list) or len(ids) > 64:
+        return None
+    result = {}
+    for aggregate, item in watermarks.items():
+        durable = opencode_durable(dict(item, aggregateID=aggregate)) if isinstance(item, dict) else None
+        if durable is None or not provider_event_id(item.get('eventID')):
+            return None
+        result[aggregate] = {key: item[key] for key in ('seq', 'version', 'eventID')}
+    if any(not provider_event_id(item) for item in ids):
+        return None
+    return dict(_opencodeWatermarks=result, _opencodeEventIDs=list(ids),
+                _opencodeDeleted=value.get('_opencodeDeleted') is True,
+                _opencodeHumanFork=value.get('_opencodeHumanFork') is True)
+
+
+def ingest_additional_hook(provider, event, home, state_dir, now):
+    """Normalize documented provider envelopes, persisting only body-free lifecycle metadata."""
+    durable, event_id, human_fork = None, None, False
+    if provider == 'antigravity':
+        if antigravity_path(event, home) is None or event.get('hook_event_name') not in ANTIGRAVITY_EVENTS:
+            return
+        identity = event['conversationId']
+        name, at = event['hook_event_name'], now
+        paths = event.get('workspacePaths')
+        cwd = paths[0] if isinstance(paths, list) and paths and isinstance(paths[0], str) and paths[0].startswith('/') else ''
+        title, parent = None, None  # The public hook contract does not identify subagent parents.
+        data = event
+    else:
+        name = event.get('type')
+        if name not in OPENCODE_EVENTS + ('wokintosh.session.discovered',):
+            return
+        data = event.get('data')
+        if not isinstance(data, dict) or not opencode_identity(data.get('sessionID')):
+            return
+        identity = data['sessionID']
+        at = parse_time(event.get('created'), None)
+        if at is None or (at - now).total_seconds() > 60:
+            return
+        event_id = provider_event_id(event.get('id'))
+        if name != 'wokintosh.session.discovered' and event_id is None:
+            return
+        if 'durable' in event:
+            durable = opencode_durable(event['durable'])
+            if durable is None:
+                return
+        if name == 'permission.replied' and data.get('reply') not in ('once', 'always', 'reject'):
+            return
+        location = data.get('location', event.get('location'))
+        cwd = location.get('directory', '') if isinstance(location, dict) else ''
+        cwd = cwd if isinstance(cwd, str) and cwd.startswith('/') else ''
+        title = data.get('title') if isinstance(data.get('title'), str) else None
+        human_fork = name == 'session.forked' or data.get('fork') is True or isinstance(data.get('fork'), dict)
+        parent = opencode_identity(data.get('parentID'))
+        parent = parent if parent != identity and not human_fork else None
+    name_hash = hashlib.sha256((provider + '\0' + identity).encode()).hexdigest() + '.json'
+    with provider_hook_store(home, state_dir) as hooks_fd:
+        raw = bounded_json(name_hash, dir_fd=hooks_fd)
+        session = valid_session(raw, provider)
+        exists = session is not None
+        if raw is not None and session is None:
+            return  # Corrupt summaries must not discard ordering/deletion evidence.
+        if session is None:
+            session = base_session(identity, provider, cwd, at, title, parent)
+        metadata_only = name in ('wokintosh.session.discovered', 'session.renamed', 'session.forked')
+        if provider == 'opencode':
+            private = normalized_opencode_private(session)
+            if private is None or private['_opencodeDeleted']:
+                return  # A deleted provider identity cannot be revived by delayed bootstrap/events.
+            session.update(private)
+            if event_id and event_id in session['_opencodeEventIDs']:
+                return
+            if durable:
+                aggregate = durable['aggregateID']
+                previous = session['_opencodeWatermarks'].get(aggregate)
+                if previous and durable['seq'] <= previous['seq']:
+                    return
+                if previous is None and len(session['_opencodeWatermarks']) >= 8:
+                    return
+                session['_opencodeWatermarks'][aggregate] = dict(seq=durable['seq'], version=durable['version'], eventID=event_id)
+            elif session['_opencodeWatermarks'] and not metadata_only and name not in ('permission.asked', 'permission.replied', 'session.idle'):
+                return  # Unsequenced compatibility traffic cannot supersede durable lifecycle evidence.
+            elif exists and not metadata_only and at < parse_time(session['updatedAt'], at):
+                return
+            if event_id:
+                session['_opencodeEventIDs'] = (session['_opencodeEventIDs'] + [event_id])[-64:]
+            if human_fork or session.get('_opencodeHumanFork'):
+                session.update(_opencodeHumanFork=True, parentId=None, isHelper=False)
+                parent = None
+        elif exists and at < parse_time(session['updatedAt'], at):
+            return
+        at = max(at, parse_time(session['updatedAt'], at))
+        if title:
+            session['title'] = provider_text(title, 90)
+        if cwd:
+            session['project'] = provider_text(Path(cwd).name, 90)
+        if parent:
+            session.update(parentId=parent, isHelper=True)
+        def save():
+            normalized = valid_session(session, provider)
+            if normalized:
+                provider_atomic_json(hooks_fd, name_hash, normalized)
+        if metadata_only:
+            save()
+            return
+        state, activity = 'unknown', 'Lifecycle state unavailable'
+        calls, unknown = pending_input_state(session)
+        if provider == 'antigravity':
+            if name == 'SessionStart':
+                if exists:
+                    return
+                state, activity = 'idle', 'Waiting for a task'
+            elif name in ('PreInvocation', 'PostInvocation', 'PreToolUse', 'PostToolUse'):
+                state, activity = 'working', 'Working'
+            elif name == 'Stop':
+                reason, fully_idle = data.get('terminationReason'), data.get('fullyIdle')
+                if reason in ('error', 'max_steps_exceeded'):
+                    state, activity = 'needsAttention', 'Agent stopped before completion'
+                elif reason == 'model_stop' and fully_idle is True:
+                    state, activity = 'finished', 'Turn completed'
+                if fully_idle is False:
+                    session['background'] = dict(version=1, foregroundState=state, foregroundUpdatedAt=stamp(at), tasks=[], incomplete=True)
+                elif fully_idle is True:
+                    session.pop('background', None)
+        else:
+            if name == 'session.deleted':
+                session.update(_opencodeDeleted=True, state='unknown', activity='', updatedAt=stamp(at), title='', project='', parentId=None, isHelper=False)
+                session.pop('background', None)
+                session.pop('_pendingInput', None)
+                save()
+                return
+            if name == 'session.idle' and exists and session['state'] in ('finished', 'needsAttention'):
+                save()
+                return
+            if name == 'session.created':
+                if exists:
+                    save()
+                    return
+                state, activity = 'idle', 'Waiting for a task'
+            elif name in ('session.execution.started', 'session.step.started', 'session.tool.called', 'session.tool.success', 'session.tool.failed', 'session.shell.started'):
+                state, activity = 'working', 'Working'
+            elif name == 'session.execution.succeeded':
+                state, activity = 'finished', 'Turn completed'
+            elif name == 'session.execution.failed':
+                state, activity = 'needsAttention', 'Agent error'
+            elif name in ('session.execution.interrupted', 'session.idle'):
+                state, activity = 'idle', 'Waiting for a task'
+            elif name == 'permission.asked':
+                request = provider_event_id(data.get('id'))
+                if request is None:
+                    return
+                calls[request] = stamp(at)
+                state, activity = 'needsAttention', 'Approval needed'
+            elif name == 'permission.replied':
+                request = provider_event_id(data.get('requestID'))
+                if request not in calls:
+                    return
+                calls.pop(request)
+                state, activity = 'unknown', 'Awaiting execution activity'
+            if name == 'session.shell.started':
+                session['background'] = dict(version=1, foregroundState=state, foregroundUpdatedAt=stamp(at), tasks=[], incomplete=True)
+            if name.startswith('session.execution.'):
+                calls, unknown = {}, None
+        if calls or unknown:
+            state, activity = 'needsAttention', 'Approval needed'
+        set_pending_input(session, calls, unknown)
+        session.update(state=state, activity=activity, updatedAt=stamp(at))
+        if session.get('background'):
+            session['background'].update(foregroundState=state, foregroundUpdatedAt=stamp(at))
+        save()
+
+
+def antigravity_hook_config(command, existing):
+    result = copy.deepcopy(existing)
+    owned = result.get(MARKER)
+    if owned is not None:
+        if not isinstance(owned, dict):
+            raise ValueError('Existing Wokintosh hook name is occupied; settings were not changed')
+        handlers = []
+        for name, entries in owned.items():
+            if name == 'enabled' and isinstance(entries, bool):
+                continue
+            if name not in ANTIGRAVITY_EVENTS or not isinstance(entries, list):
+                raise ValueError('Existing Wokintosh hook name is occupied; settings were not changed')
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    raise ValueError('Invalid existing observer; settings were not changed')
+                handlers.extend(entry.get('hooks', []) if name in ('PreToolUse', 'PostToolUse') else [entry])
+        if not handlers or not all(observer_handler(handler) for handler in handlers):
+            raise ValueError('Existing Wokintosh hook name is occupied; settings were not changed')
+    entry = {}
+    for name in ANTIGRAVITY_EVENTS:
+        handler = dict(type='command', command=command + ' --event ' + name + ' # ' + MARKER, timeout=3)
+        entry[name] = [dict(matcher='*', hooks=[handler])] if name in ('PreToolUse', 'PostToolUse') else [handler]
+    if owned is not None and 'enabled' in owned:
+        entry['enabled'] = owned['enabled']
+    result[MARKER] = entry
+    return result
+
+
+def opencode_plugin_source(command):
+    """V2 server plugin: subscribe to public events; never register an interception hook."""
+    source = r'''// wokintosh-observer: metadata only; requires OpenCode V2.
+import { Plugin } from "@opencode/plugin";
+import { spawn } from "node:child_process";
+const argv = __ARGV__;
+const types = __TYPES__;
+const identity = value => typeof value === "string" && Array.from(value).length <= 180 ? value : undefined;
+const short = (value, limit = 180) => typeof value === "string" ? Array.from(value).slice(0, limit).join("").replace(/[\uD800-\uDFFF]/gu, "�") : undefined;
+function emit(event) {
+  return new Promise((resolve) => {
+    const child = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "ignore", "ignore"], shell: false });
+    const timer = setTimeout(() => { child.kill(); resolve(); }, 2500);
+    child.on("error", () => { clearTimeout(timer); resolve(); });
+    child.on("close", () => { clearTimeout(timer); resolve(); });
+    child.stdin.on("error", () => {});
+    child.stdin.end(JSON.stringify(event));
+  });
+}
+function metadata(info) {
+  return { sessionID: identity(info.id), title: short(info.title, 90), parentID: identity(info.parentID), fork: info.fork != null,
+           location: { directory: short(info.location?.directory, 4096) } };
+}
+export default Plugin.define({
+  id: "wokintosh-observer",
+  async setup(ctx) {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ types, signal: controller.signal })) {
+          if (controller.signal.aborted) break;
+          const data = event.data ?? {};
+          await emit({ id: identity(event.id), type: event.type, created: event.created,
+            durable: event.durable ? { aggregateID: identity(event.durable.aggregateID), seq: event.durable.seq, version: event.durable.version } : undefined,
+            location: { directory: short(event.location?.directory, 4096) },
+            data: { sessionID: identity(data.sessionID), title: short(data.title, 90), parentID: identity(data.parentID),
+                    id: identity(data.id), requestID: identity(data.requestID), reply: short(data.reply, 16), fork: data.fork != null,
+                    location: data.location ? { directory: short(data.location.directory, 4096) } : undefined } });
+        }
+      } catch {} // Provider shutdown or an unavailable stream is absence of evidence, never Done.
+    })();
+    void (async () => {
+      try {
+        const page = await ctx.session.list({ directory: ctx.location.directory, limit: 20 });
+        for (const info of (page.data ?? []).slice(0, 20)) {
+          if (controller.signal.aborted) break;
+          await emit({ type: "wokintosh.session.discovered", created: info.time?.updated ?? Date.now(), data: metadata(info) });
+        }
+      } catch {} // Discovery failure leaves existing lifecycle evidence unchanged.
+    })();
+    return () => controller.abort();
+  },
+});
+'''
+    return source.replace('__ARGV__', json.dumps(shlex.split(command))).replace('__TYPES__', json.dumps(OPENCODE_EVENTS))
+
+
+def opencode_config_text(text, plugin):
+    """Insert one plugin while retaining JSONC comments, formatting, and every policy byte."""
+    if len(text.encode()) > MAX_PROVIDER_BYTES:
+        raise ValueError('OpenCode configuration is too large; settings were not changed')
+    # Mask comments without changing character offsets. Strings remain byte-for-byte intact.
+    tokens = list(re.finditer(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|/\*[\s\S]*?\*/|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\]:,]', text))
+    previous_end = 0
+    for token in tokens:
+        if text[previous_end:token.start()].strip():
+            raise ValueError('OpenCode configuration contains invalid syntax; settings were not changed')
+        previous_end = token.end()
+    if text[previous_end:].strip():
+        raise ValueError('OpenCode configuration contains invalid syntax; settings were not changed')
+    masked = list(text)
+    for token in tokens:
+        if token.group().startswith(('/', '/*')):
+            masked[token.start():token.end()] = ['\n' if char == '\n' else ' ' for char in token.group()]
+    syntax = [token for token in tokens if not token.group().startswith('/')]
+    for index, token in enumerate(syntax[:-1]):
+        if token.group() == ',' and syntax[index + 1].group() in (']', '}'):
+            masked[token.start()] = ' '
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('Duplicate configuration keys; settings were not changed')
+            result[key] = value
+        return result
+    try:
+        existing = json.loads(''.join(masked), object_pairs_hook=unique_keys)
+    except (ValueError, RecursionError):
+        raise ValueError('OpenCode configuration must be valid JSON or JSONC; settings were not changed') from None
+    if not isinstance(existing, dict) or not isinstance(existing.get('plugins', []), list):
+        raise ValueError('OpenCode settings require a plugins array; settings were not changed')
+    plugins = existing.get('plugins', [])
+    if plugin in plugins or any(isinstance(item, dict) and item.get('package') == plugin for item in plugins):
+        return text
+    depth = 0
+    for index, token in enumerate(syntax):
+        word = token.group()
+        if depth == 1 and word.startswith('"') and json.loads(word) == 'plugins' and syntax[index + 1].group() == ':':
+            start = index + 2
+            if syntax[start].group() != '[':
+                raise ValueError('OpenCode settings require a plugins array; settings were not changed')
+            level = 0
+            for end in range(start, len(syntax)):
+                item = syntax[end].group()
+                if item in ('[', '{'):
+                    level += 1
+                elif item in (']', '}'):
+                    level -= 1
+                if level == 0:
+                    previous = syntax[end - 1].group()
+                    separator = ',' if plugins and previous != ',' else ''
+                    position = syntax[end].start()
+                    return text[:position] + separator + '\n    ' + json.dumps(plugin) + '\n  ' + text[position:]
+        if word in ('{', '['):
+            depth += 1
+        elif word in ('}', ']'):
+            depth -= 1
+    # Add a top-level property before the final closing brace, respecting trailing commas.
+    position = syntax[-1].start()
+    separator = ',' if existing and syntax[-2].group() != ',' else ''
+    insertion = separator + '\n  "plugins": [' + json.dumps(plugin) + ']\n'
+    return text[:position] + insertion + text[position:]
+
+
+def install_additional_hooks(provider, home, state_dir, command, dry_run):
+    changes = {}
+    if provider == 'antigravity':
+        config = home / '.gemini/config/hooks.json'
+        if not safe_home_path(config, home):
+            raise ValueError('Provider configuration uses a symlink or unsafe path; settings were not changed')
+        existing = bounded_json(config) if config.exists() else {}
+        if not isinstance(existing, dict):
+            raise ValueError('Existing hook settings must be a bounded JSON object; settings were not changed')
+        changes[config] = json.dumps(antigravity_hook_config(command, existing), indent=2) + '\n'
+    else:
+        config = home / '.config/opencode/opencode.json'
+        alternate = config.with_suffix('.jsonc')
+        if alternate.exists():
+            if config.exists():
+                raise ValueError('Both OpenCode global JSON and JSONC settings exist; choose a single source before installing')
+            config = alternate
+        if not safe_home_path(config, home):
+            raise ValueError('Provider configuration uses a symlink or unsafe path; settings were not changed')
+        if config.exists() and (not config.is_file() or config.stat().st_size > MAX_PROVIDER_BYTES):
+            raise ValueError('OpenCode configuration is unavailable or too large; settings were not changed')
+        original = bounded_text(config) if config.exists() else '{}\n'
+        if original is None:
+            raise ValueError('OpenCode configuration is unavailable; settings were not changed')
+        plugin = home / '.local/share/wokintosh/opencode-observer'
+        updated = opencode_config_text(original, str(plugin))
+        changes[plugin / 'index.js'] = opencode_plugin_source(command)
+        changes[plugin / 'package.json'] = json.dumps(dict(name='wokintosh-observer', version=COLLECTOR_VERSION,
+            type='module', exports='./index.js', dependencies={'@opencode/plugin': 'latest'}), indent=2) + '\n'
+        changes[config] = updated
+    # Validate and capture every bounded regular file before any backup or replacement.
+    originals = {}
+    for path in changes:
+        if not safe_home_path(path, home):
+            raise ValueError('Provider installation path is unsafe; settings were not changed')
+        previous = bounded_text(path) if path.exists() else None
+        if path.exists() and previous is None:
+            raise ValueError('Provider installation file is unavailable or too large; settings were not changed')
+        originals[path] = previous
+        if path.name == 'package.json' and previous is not None:
+            try:
+                package = json.loads(previous)
+            except ValueError:
+                package = None
+            if not isinstance(package, dict) or package.get('name') != MARKER:
+                raise ValueError('Plugin package path contains unrelated settings; settings were not changed')
+        if path.name == 'index.js' and previous is not None and MARKER not in previous:
+            raise ValueError('Plugin path contains unrelated code; settings were not changed')
+    for path, content in changes.items():
+        if originals[path] == content:
+            continue
+        if dry_run:
+            print(f'Wokintosh dry run: update {path}', file=sys.stderr)
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            shutil.copy2(path, path.with_name(path.name + '.wokintosh-backup-' + str(time.time_ns())))
+        fd, temporary = tempfile.mkstemp(prefix='.wokintosh-', dir=path.parent)
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(content)
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    print(f'{"Prepared" if dry_run else "Installed"} observational {provider} observer (Untested). Restart provider sessions/server to load it. Configuration: {config}')
 
 
 def stamp(value):
@@ -140,6 +802,11 @@ def base_session(identity, provider, cwd, updated, title=None, parent=None):
 
 
 def finalize(session, now):
+    if session and session.get('provider') in ADDITIONAL_PROVIDERS:
+        age = (now - parse_time(session['updatedAt'], now)).total_seconds()
+        if not -60 <= age <= STALE_SECONDS:
+            session.update(state='unknown', activity='No recent lifecycle signal')
+            return session
     if session and session.get('background'):
         return apply_background(session, now)
     if session and session['state'] == 'working':
@@ -935,7 +1602,7 @@ def system_stats(home, state_dir):
 
 def valid_session(value, provider=None):
     """Validate persisted summaries; whitelist fields so cache contents cannot add bodies."""
-    if not isinstance(value, dict) or value.get('provider') not in ('codex', 'claude'):
+    if not isinstance(value, dict) or value.get('provider') not in PROVIDERS:
         return None
     if provider and value['provider'] != provider:
         return None
@@ -974,6 +1641,25 @@ def valid_session(value, provider=None):
     if value['provider'] == 'claude' and bridge_id:
         result['_bridgeSessionID'] = bridge_id
     result['isHelper'] = value.get('isHelper', False) or bool(value.get('parentId'))
+    if value['provider'] in ADDITIONAL_PROVIDERS:
+        if ((value['provider'] == 'opencode' and not opencode_identity(value['id'])) or
+                (value['provider'] == 'antigravity' and not canonical_thread_id(value['id'])) or
+                (value.get('parentId') is not None and not provider_event_id(value['parentId']))):
+            return None
+        for field in ('title', 'project', 'activity'):
+            result[field] = provider_text(result[field], 90 if field != 'activity' else 180)
+        if background:
+            for task in background['tasks']:
+                if not provider_event_id(task['id']):
+                    return None
+                task['label'] = provider_text(task['label'], 90)
+        if value['provider'] == 'opencode':
+            private = normalized_opencode_private(value)
+            if private is None:
+                return None
+            result.update(private)
+            if private['_opencodeHumanFork']:
+                result.update(parentId=None, isHelper=False)
     if type(value.get('_hookStateVersion')) is int and value['_hookStateVersion'] >= HOOK_STATE_VERSION:
         result['_hookStateVersion'] = value['_hookStateVersion']
     pending = value.get('_pendingInput')
@@ -1198,7 +1884,7 @@ def load_goal_marker(path, strict=False):
 
 def set_goal_status(state_dir, provider, identity, status, now, title=None, project=None, source='explicit'):
     """Persist only an explicit goal status and small display metadata, never a goal body."""
-    if (provider not in ('codex', 'claude') or not isinstance(identity, str) or
+    if (provider not in PROVIDERS or not isinstance(identity, str) or
             not identity or len(identity) > 180 or identity != clean(identity, 180) or
             status not in ('blocked', 'stalled', 'paused', 'active', 'complete') or
             source not in ('explicit', 'codex') or (source == 'codex' and provider != 'codex')):
@@ -1531,6 +2217,8 @@ def merge_helper_background(sessions, now):
                 child_id = child_id.removeprefix('agent-')
             status = {'working':'running','needsAttention':'needsAttention','blocked':'needsAttention',
                       'finished':'completed','idle':'completed','unknown':'unknown'}[child['state']]
+            if child['provider'] in ADDITIONAL_PROVIDERS and child['state'] == 'idle':
+                status = 'unknown'
             if child.get('background') and child['state'] == 'idle' and any(task['status'] == 'running' for task in child['background']['tasks']):
                 status = 'running'
             observe_background_task(background, child_id, 'subagent', status, parse_time(child['updatedAt'], now), child['title'])
@@ -1554,6 +2242,10 @@ def make_snapshot(home, state_dir, now, host_name=None):
         if isinstance(item.get('id'), str):
             title_index[item['id']] = clean(item.get('thread_name') or item.get('title'), 90)
     sessions = {}
+    for session in discover_antigravity(home, now):
+        key = (session['provider'], session['id'])
+        if key not in sessions or session['updatedAt'] > sessions[key]['updatedAt']:
+            sessions[key] = session
     transcript_identities = set()
     transcript_paths = {}
     bridge_links = {}
@@ -1601,11 +2293,10 @@ def make_snapshot(home, state_dir, now, host_name=None):
                         sessions[key] = session
             except (OSError, ValueError, TypeError, KeyError):
                 continue
-    for path in (state_dir / 'hooks').glob('*.json'):
+    for entry in hook_summaries(state_dir):
         try:
-            entry = json.loads(path.read_text())
             entry = valid_session(entry)
-            if entry is None:
+            if entry is None or entry.get('_opencodeDeleted'):
                 continue
             provider, identity = entry['provider'], entry['id']
             key = (provider, identity)
@@ -1619,6 +2310,9 @@ def make_snapshot(home, state_dir, now, host_name=None):
                         combined.update(foregroundState=current['state'], foregroundUpdatedAt=current['updatedAt'])
                     current['background'] = combined
             if key not in sessions:
+                sessions[key] = finalize(entry, now)
+            elif provider in ADDITIONAL_PROVIDERS:
+                # A transcript mtime identifies existence, never lifecycle or project metadata.
                 sessions[key] = finalize(entry, now)
             elif (provider == 'claude' and entry.get('_hookStateVersion', 0) >= HOOK_STATE_VERSION and
                   entry['state'] in ('working', 'needsAttention', 'finished') and
@@ -1672,12 +2366,15 @@ def make_snapshot(home, state_dir, now, host_name=None):
     goal_identities = merge_goal_markers(sessions, state_dir, home, transcript_identities)
     if goal_identities is None:
         errors.append('Goal status unavailable')
+    additional_links = additional_provider_links(state_dir)
     for key, session in sessions.items():
         finalize(session, now)
         session['goalBlocked'] = key in goal_identities if goal_identities is not None else (True if session.get('goalBlocked') is True else None)
         if session['provider'] == 'claude' and bridge_links.get(key):
             session['_bridgeSessionID'] = bridge_links[key]
         targets = session_open_urls(session)
+        if session['provider'] in ADDITIONAL_PROVIDERS and not session.get('isHelper') and not session.get('parentId'):
+            targets = additional_links.get(key)
         if targets:
             session['openURLs'] = targets
         else:
@@ -2047,6 +2744,8 @@ def hook_install_toml(text, command, migrated):
 
 
 def install_hooks(provider, home, state_dir, command, dry_run=False, consolidate_sources=False):
+    if provider in ADDITIONAL_PROVIDERS and not consolidate_sources:
+        return install_additional_hooks(provider, home, state_dir, command, dry_run)
     if consolidate_sources and provider != 'codex':
         raise ValueError('--consolidate-sources is only supported for Codex; settings were not changed')
     json_path = home / ('.claude/settings.json' if provider == 'claude' else '.codex/hooks.json')
@@ -2117,6 +2816,8 @@ def install_hooks(provider, home, state_dir, command, dry_run=False, consolidate
 
 
 def ingest_hook(provider, event, home, state_dir, now):
+    if provider in ADDITIONAL_PROVIDERS:
+        return ingest_additional_hook(provider, event, home, state_dir, now)
     target = hook_identity(provider, event)
     if target is None:
         return
@@ -2162,15 +2863,16 @@ def main(argv=None):
     snapshot.add_argument('--json', action='store_true', help='Compatibility; JSON is always emitted')
     snapshot.add_argument('--host-name')
     hook = sub.add_parser('hook', help='Observe a lifecycle hook from stdin; always return neutral JSON')
-    hook.add_argument('--provider', choices=['codex', 'claude'], required=True)
+    hook.add_argument('--provider', choices=PROVIDERS, required=True)
+    hook.add_argument('--event', choices=ANTIGRAVITY_EVENTS, help='Antigravity event name supplied by the installed observer')
     goal = sub.add_parser('goal-status', help='Publish or clear a persistent unfinished-goal status')
-    goal.add_argument('--provider', choices=['codex', 'claude'], required=True)
+    goal.add_argument('--provider', choices=PROVIDERS, required=True)
     goal.add_argument('--session-id', required=True)
     goal.add_argument('--status', choices=['blocked', 'stalled', 'active', 'complete'], required=True)
     goal.add_argument('--title', help='Optional short dashboard title; no goal body')
     goal.add_argument('--project', help='Optional short project name')
     install = sub.add_parser('install-hooks', help='Explicitly merge observational hooks, backing up settings')
-    install.add_argument('--provider', choices=['codex', 'claude'], required=True)
+    install.add_argument('--provider', choices=PROVIDERS, required=True)
     install.add_argument('--dry-run', action='store_true')
     install.add_argument('--consolidate-sources', action='store_true',
                          help='Explicitly consolidate Codex hooks.json into existing TOML hook tables, with full backups')
@@ -2194,12 +2896,18 @@ def main(argv=None):
         print('{}')
     elif args.command == 'hook':
         try:
-            event = json.loads(sys.stdin.buffer.read(1024*1024))
+            raw = sys.stdin.buffer.read(1024*1024 + 1)
+            event = json.loads(raw) if len(raw) <= 1024*1024 else None
             if isinstance(event, dict):
+                if args.provider == 'antigravity' and args.event:
+                    event['hook_event_name'] = args.event
                 ingest_hook(args.provider, event, args.home, state_dir, now)
-        except (OSError, ValueError, TypeError) as error:
+        except (OSError, ValueError, TypeError, RecursionError) as error:
             print(f'Wokintosh observer: {type(error).__name__}', file=sys.stderr)
-        print('{}')  # No approval decision, continuation instruction or model context.
+        # Antigravity requires a decision. 'allow' delegates to later hooks/default policy;
+        # it neither auto-approves execution nor injects a continuation.
+        neutral = {'decision': 'allow'} if args.provider == 'antigravity' and args.event in ('PreToolUse', 'Stop') else {}
+        print(json.dumps(neutral))
     else:
         command = shlex.join([sys.executable, str(Path(__file__).resolve()), '--home', str(args.home),
                               '--state-dir', str(state_dir), 'hook', '--provider', args.provider])

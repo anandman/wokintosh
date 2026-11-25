@@ -54,6 +54,9 @@ private enum RetroAssets {
     static let mac=Bundle.module.url(forResource:"mac",withExtension:"png").flatMap(NSImage.init(contentsOf:))
     static let codex=Bundle.module.url(forResource:"codex",withExtension:"png").flatMap(NSImage.init(contentsOf:))
     static let claude=Bundle.module.url(forResource:"claude",withExtension:"png").flatMap(NSImage.init(contentsOf:))
+    static let antigravity=Bundle.module.url(forResource:"antigravity",withExtension:"png").flatMap(NSImage.init(contentsOf:))
+    static let opencode=Bundle.module.url(forResource:"opencode",withExtension:"png").flatMap(NSImage.init(contentsOf:))
+    static let opencodeDark=Bundle.module.url(forResource:"opencode-dark",withExtension:"png").flatMap(NSImage.init(contentsOf:))
 }
 struct MacMark: View {
     var body: some View {
@@ -64,15 +67,21 @@ struct MacMark: View {
 }
 struct ProviderMark: View {
     let provider: String
-    var body: some View {
-        if provider == "codex" {
-            if let image=RetroAssets.codex {
-                Image(nsImage:image).resizable().scaledToFit()
-            } else { Text("C").font(.system(size:24,weight:.bold)).foregroundStyle(Color.retroPurple) }
-        } else {
-            if let image=RetroAssets.claude { Image(nsImage:image).resizable().scaledToFit() }
-            else { Text("C").font(.system(size:24,weight:.bold)).foregroundStyle(Color(red:0.78,green:0.34,blue:0.23)) }
+    @Environment(\.colorScheme) private var colorScheme
+    private var image: NSImage? {
+        switch AgentProvider(rawValue: provider) {
+        case .codex: return RetroAssets.codex
+        case .claude: return RetroAssets.claude
+        case .antigravity: return RetroAssets.antigravity
+        case .opencode: return colorScheme == .dark ? RetroAssets.opencodeDark : RetroAssets.opencode
+        case nil: return nil
         }
+    }
+    var body: some View {
+        Group {
+            if let image { Image(nsImage: image).resizable().scaledToFit() }
+            else { Image(systemName: AgentProvider(rawValue: provider)?.symbol ?? "terminal").resizable().scaledToFit() }
+        }.accessibilityLabel(AgentProvider.title(for: provider)).help(AgentProvider.title(for: provider))
     }
 }
 struct StatusDot: View {

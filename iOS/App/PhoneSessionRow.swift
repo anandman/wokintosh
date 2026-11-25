@@ -54,6 +54,7 @@ struct PhoneSessionInformation:View {
                     Text(row.completionPending ? "Done" : row.session.statusLabel).font(PhonePalette.font(14,bold:true,relativeTo:.caption)).foregroundStyle(stateColor)
                     if offline || !row.connected {Text("· Offline").font(.caption).foregroundStyle(PhonePalette.secondary)}
                     else if row.freshness(at:Date()) == .stale {Text("· Stale").font(.caption).foregroundStyle(PhonePalette.secondary)}
+                    if row.session.hasUntestedProvider {Text("· Untested").font(.caption).foregroundStyle(PhonePalette.secondary)}
                 }
             }.frame(maxWidth:.infinity,alignment:.leading)
         }.foregroundStyle(.black).accessibilityElement(children:.combine).privacySensitive()

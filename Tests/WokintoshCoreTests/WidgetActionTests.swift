@@ -52,6 +52,28 @@ final class WidgetActionTests:XCTestCase {
         XCTAssertThrowsError(try action.target(provider:nil))
         XCTAssertThrowsError(try action.target(provider:"unknown"))
     }
+    func testUntestedProvidersRequireAnExplicitAppChoiceWhenTheyHaveNoSessionLink() throws {
+        let action = try JSONDecoder().decode(WidgetAction.self, from: Data("{\"kind\":\"openAgentApp\"}".utf8))
+        for provider in ["antigravity", "opencode"] {
+            XCTAssertThrowsError(try action.target(provider: provider)) { error in
+                XCTAssertEqual(error as? WidgetActionError, .chooseApplication)
+            }
+        }
+    }
+    func testAdditionalProviderChoicesPersistAndSessionLinksHavePriority() throws {
+        var action = WidgetAction(kind: .openAgentApp)
+        action.setApplicationChoice(ProviderApplication(bundleID: "test.antigravity", name: "Antigravity App"), for: "antigravity")
+        action.setApplicationChoice(ProviderApplication(bundleID: "test.opencode", name: "OpenCode App"), for: "opencode")
+        let restored = try JSONDecoder().decode(WidgetAction.self, from: JSONEncoder().encode(action))
+        for (provider, bundleID) in [("antigravity", "test.antigravity"), ("opencode", "test.opencode")] {
+            XCTAssertEqual(try restored.target(provider: provider), .application(bundleID: bundleID))
+            var session = AgentSession(id: "fixture", provider: provider, title: "Fixture", project: "project", state: .working, updatedAt: Date())
+            session.openURLs = SessionOpenURLs(macOS: SessionOpenTarget(primary: "https://example.com/session/fixture"))
+            XCTAssertEqual(try restored.targets(provider: provider, session: session), [.link(URL(string: "https://example.com/session/fixture")!), .application(bundleID: bundleID)])
+        }
+        XCTAssertEqual(try restored.target(provider: "claude"), .application(bundleID: "com.anthropic.claudefordesktop"))
+        XCTAssertEqual(try restored.target(provider: "codex"), .application(bundleID: "com.openai.codex"))
+    }
     func testWebAndApplicationLinksPreserveDestinationWhileRejectingInvalidInput() throws {
         XCTAssertEqual(try WidgetAction(kind:.openURL,url:"https://example.com/weather?city=Paris#today").target(),.link(URL(string:"https://example.com/weather?city=Paris#today")!))
         XCTAssertEqual(try WidgetAction(kind:.openURL,url:"weather-example://forecast").target(),.link(URL(string:"weather-example://forecast")!))

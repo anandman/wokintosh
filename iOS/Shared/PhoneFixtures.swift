@@ -20,7 +20,7 @@ enum PhoneFixtures {
     }
     #endif
     static func feed(at now:Date=Date(),includeControls:Bool=false)->PublishedWidgetFeed {
-        let values:[(String,String,String,AgentState)]=[("Review database migration","Build Mac","codex",.needsAttention),("Polish the dashboard","Devbox","claude",.working),("Fix weather layout","Build Mac","codex",.finished),("Improve project search","Devbox","claude",.working),("Update documentation","Build Mac","codex",.working),("Review test coverage","Devbox","claude",.working),("Improve keyboard shortcuts","Build Mac","codex",.working),("Simplify account settings","Devbox","claude",.working),("Polish widget spacing","Build Mac","codex",.working),("Speed up project loading","Devbox","claude",.working)]
+        let values:[(String,String,String,AgentState)]=[("Review database migration","Build Mac","codex",.needsAttention),("Polish the dashboard","Devbox","claude",.working),("Fix weather layout","Build Mac","codex",.finished),("Improve project search","Devbox","antigravity",.working),("Update documentation","Build Mac","opencode",.working),("Review test coverage","Devbox","claude",.working),("Improve keyboard shortcuts","Build Mac","codex",.working),("Simplify account settings","Devbox","claude",.working),("Polish widget spacing","Build Mac","codex",.working),("Speed up project loading","Devbox","claude",.working)]
         var rows=values.enumerated().map {index,value -> SessionRow in
             var session=AgentSession(id:"sample-\(index)",provider:value.2,title:value.0,project:index==2 ? "weather" : "dashboard",state:value.3,updatedAt:now.addingTimeInterval(Double(-index*120)))
             if index==0 {
