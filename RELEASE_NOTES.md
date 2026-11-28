@@ -1,11 +1,11 @@
-# Wokintosh 2.1.1
+# Wokintosh 2.1.2
 
-Correct agent states when old internal helpers or quiet background work are involved.
+Restore Claude session links when Remote Control is connected but observational hooks have not captured its bridge ID.
 
-- **Current Claude task inventories take precedence.** Historical helper errors and incomplete helper transcripts no longer resurrect tasks that a newer complete inventory says have ended. Newer requests for input still show Needs you, and explicit completion history is retained.
-- **Internal Codex reviews do not become project work.** Guardian approval reviews are identified from provider metadata, so metadata-only internal reviews no longer keep completed sessions Unknown. Ordinary delegated agents remain part of the parent's state.
-- **Quiet Claude runners remain verifiable.** The collector checks both current session-specific and older task-output directories for positive writer evidence. Stale or genuinely unresolved work continues to show Unknown.
+- **Live-session fallback.** The collector can read the exact Claude session's Remote Control ID from its local registry. Hook-provided IDs remain preferred. Mac, iPhone and iPad keep the tested `claude://code/{bridge-id}` target and HTTPS backup.
+- **Validated association.** The registered process must be live and match its owner, process-start token and host/PID namespace. Bounded reads reject malformed IDs, conflicting records, symlinks and nonregular files. Ended sessions remain unavailable until a new lifecycle event.
+- **Observational behavior.** Fallback metadata does not create agent rows, change status, enable Remote Control or grant permissions. It is rechecked each poll and is not persisted in collector caches. Claude's registry is undocumented, so unsupported metadata leaves links unavailable.
 
-Install the signed, notarized Mac update through **Check for Updates**, then choose **Settings → Machines → Update All** to update collectors and existing managed observers. Hooks remain observational and never submit prompts or approve provider actions.
+Install the signed, notarized Mac update through **Check for Updates**, then use **Settings → Machines → Update All** for remote collectors and existing managed observers.
 
-The iPhone/iPad companion remains **2.1.0 (build 23)**. No mobile reinstall is required for this fix: updated agent states arrive through the publishing Mac's feed. Automatic still treats a generic shell command as Work; use **Background Tasks → Monitor** for a runner whose purpose is watching for events.
+The iPhone/iPad companion remains **2.1.0 (build 23)**. No mobile reinstall or re-pairing is needed; corrected links arrive through the publishing Mac's feed.

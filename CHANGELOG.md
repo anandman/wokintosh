@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2 — 2026-11-27
+
+- Recover missing Claude Remote Control links from the local live-session registry when observational hooks have not captured a bridge ID. Keep hook-provided IDs preferred and retain the Claude deep link with HTTPS backup on Mac, iPhone and iPad.
+- Validate the exact session association, process owner, process-start token and host/PID namespace. Reject stale, malformed, conflicting and unsafe records; recheck fallback metadata on each poll without persisting it in collector caches or changing agent state.
+- Keep protocol version 1 and the existing iPhone/iPad companion unchanged. The registry fallback is best effort because Claude's internal metadata format is undocumented.
+
 ## 2.1.1 — 2026-11-25
 
 - Stop historical Claude helper errors and unfinished observations from overriding a newer complete task inventory. Preserve confirmed helper completions and newer requests for input.

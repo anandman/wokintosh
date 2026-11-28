@@ -343,6 +343,8 @@ class AdditionalProviderTests(unittest.TestCase):
         harness = self.home / 'verify-plugin.mjs'
         harness.write_text("""import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 const plugin = (await import(pathToFileURL(process.argv[2]))).default;
 const events = JSON.parse(process.argv[3]);
 const original = JSON.stringify(events);
@@ -353,6 +355,8 @@ const cleanup = await plugin.setup({
   location: { directory: '/workspace/project' },
   session: { async list(input) {
     assert.deepEqual(input, { directory: '/workspace/project', limit: 20 });
+    // Make bootstrap slower than the old fixed cleanup delay on purpose.
+    await new Promise(resolve => setTimeout(resolve, 500));
     return { data: [{ id: 'ses_inventory', title: 'Inventory', outcome: 'succeeded',
       location: {directory: '/workspace/project'}, time: { updated: events[0].created } }], cursor: {} };
   } },
@@ -366,12 +370,28 @@ const cleanup = await plugin.setup({
   permission: { hook() { throw new Error('must not change approvals'); } },
 });
 await done;
-await new Promise(resolve => setTimeout(resolve, 200));
+// Bootstrap runs independently of the event stream. Keep the provider alive
+// until its real bridge write arrives, rather than racing a fixed sleep/cleanup.
+async function inventoryArrived() {
+  try {
+    const directory = join(process.argv[4], 'hooks');
+    const names = (await readdir(directory)).filter(name => name.endsWith('.json'));
+    const rows = await Promise.all(names.map(async name => {
+      try { return JSON.parse(await readFile(join(directory, name), 'utf8')); } catch { return null; }
+    }));
+    return rows.some(row => row?.id === 'ses_inventory');
+  } catch { return false; }
+}
+const deadline = Date.now() + 5000;
+while (!(await inventoryArrived()) && Date.now() < deadline) {
+  await new Promise(resolve => setTimeout(resolve, 20));
+}
+assert(await inventoryArrived(), 'The bootstrap metadata bridge did not finish');
 assert.equal(JSON.stringify(events), original);
 cleanup();
 assert.equal(signal.aborted, true);
 """)
-        run = subprocess.run(['node', str(harness), str(plugin / 'index.js'), json.dumps(events)],
+        run = subprocess.run(['node', str(harness), str(plugin / 'index.js'), json.dumps(events), str(self.state)],
                              capture_output=True, text=True, timeout=15)
         self.assertEqual(run.returncode, 0, run.stderr)
         rows = {row['id']: row for row in self.sessions()}

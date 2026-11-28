@@ -29,7 +29,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
 from urllib.parse import urlsplit, parse_qsl, unquote
 
-COLLECTOR_VERSION = '2.1.1'
+COLLECTOR_VERSION = '2.1.2'
 MAX_COLLECTOR_BYTES = 1024 * 1024
 
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -745,6 +745,84 @@ def canonical_thread_id(value):
 
 def valid_bridge_id(value):
     return value if isinstance(value, str) and re.fullmatch(r'session_[A-Za-z0-9]{16,128}', value) else None
+
+
+def claude_process_identity(pid, timeout):
+    """Match Claude's process-start token and host/PID namespace, never PID alone."""
+    try:
+        if platform.system() == 'Linux':
+            process = Path('/proc') / str(pid)
+            if process.stat().st_uid != os.getuid():
+                return None
+            fields = (process / 'stat').read_text().rsplit(')', 1)[1].split()
+            if fields[0] in ('Z', 'X'):
+                return None
+            machine = Path('/etc/machine-id').read_text().strip()
+            if not re.fullmatch(r'[0-9a-f]{32}', machine):
+                return None
+            domain = 'linux:' + machine + ':' + os.readlink('/proc/self/ns/pid')
+            return fields[19], domain
+        if platform.system() == 'Darwin':
+            result = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'uid=', '-o', 'state=', '-o', 'lstart='],
+                                    env=dict(os.environ, LC_ALL='C', TZ='UTC'), capture_output=True,
+                                    text=True, timeout=min(0.2, timeout), check=False)
+            fields = result.stdout.strip().split(None, 2)
+            if result.returncode == 0 and len(fields) == 3 and fields[0] == str(os.getuid()) and not fields[1].startswith('Z'):
+                return fields[2].strip(), 'darwin'
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def live_claude_bridge_links(home, session_ids):
+    """Best-effort undocumented registry fallback; IDs never enter collector caches."""
+    if not session_ids:
+        return {}
+    claude_fd = registry_fd = None
+    deadline = time.monotonic() + 1.0
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0)
+        claude_fd = os.open(home / '.claude', flags)
+        registry_fd = os.open('sessions', flags, dir_fd=claude_fd)
+        if any(os.fstat(fd).st_uid != os.getuid() for fd in (claude_fd, registry_fd)):
+            return {}
+        entries = []
+        with os.scandir(registry_fd) as scan:
+            for entry in scan:
+                entries.append(entry)
+                if len(entries) > 256 or time.monotonic() >= deadline:
+                    return {}  # A partial scan cannot rule out conflicting associations.
+        matches, identities = {}, {}
+        for entry in entries:
+            if not re.fullmatch(r'[1-9][0-9]{0,9}\.json', entry.name):
+                continue
+            info = entry.stat(follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+                continue
+            record = bounded_json(entry.name, 16384, dir_fd=registry_fd)
+            if not isinstance(record, dict):
+                continue
+            identity, bridge, pid = canonical_thread_id(record.get('sessionId')), valid_bridge_id(record.get('bridgeSessionId')), record.get('pid')
+            if (identity not in session_ids or not bridge or type(pid) is not int or not 1 < pid <= 2147483647 or
+                    entry.name != str(pid) + '.json' or record.get('kind') != 'interactive'):
+                continue
+            start, domain = record.get('procStart'), record.get('pidDomain')
+            if not isinstance(start, str) or not 0 < len(start) <= 128 or not isinstance(domain, str) or len(domain) > 256:
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {}
+            if pid not in identities:
+                identities[pid] = claude_process_identity(pid, remaining)
+            if identities[pid] == (start, domain):
+                matches.setdefault(identity, set()).add(bridge)
+        return {identity: next(iter(bridges)) for identity, bridges in matches.items() if len(bridges) == 1}
+    except (OSError, ValueError):
+        return {}
+    finally:
+        for fd in (registry_fd, claude_fd):
+            if fd is not None:
+                os.close(fd)
 
 
 def session_open_urls(session):
@@ -2275,6 +2353,7 @@ def make_snapshot(home, state_dir, now, host_name=None):
     transcript_identities = set()
     transcript_paths = {}
     bridge_links = {}
+    ended_bridge_sessions = set()
     errors = []
     cached = load_parse_cache(state_dir / 'parse-cache.json')
     next_cache = {}
@@ -2331,6 +2410,12 @@ def make_snapshot(home, state_dir, now, host_name=None):
             key = (provider, identity)
             if provider == 'claude':
                 bridge_links[key] = entry.get('_bridgeSessionID')
+                lifecycle = [event for event in entry.get('_hookEvents', [])
+                             if event.get('hook_event_name') in ('SessionStart', 'SessionEnd', 'UserPromptSubmit',
+                                 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest',
+                                 'Stop', 'StopFailure', 'Interrupt')]
+                if lifecycle and lifecycle[-1].get('hook_event_name') == 'SessionEnd':
+                    ended_bridge_sessions.add(identity)
             if key in sessions:
                 combined = merge_background(sessions[key].get('background'), entry.get('background'))
                 if combined:
@@ -2396,11 +2481,17 @@ def make_snapshot(home, state_dir, now, host_name=None):
     if goal_identities is None:
         errors.append('Goal status unavailable')
     additional_links = additional_provider_links(state_dir)
+    missing_bridges = {identity for (provider, identity), session in sessions.items()
+                       if provider == 'claude' and not session.get('isHelper') and not session.get('parentId') and
+                       not bridge_links.get((provider, identity)) and identity not in ended_bridge_sessions}
+    live_bridges = live_claude_bridge_links(home, missing_bridges)
     for key, session in sessions.items():
         finalize(session, now)
         session['goalBlocked'] = key in goal_identities if goal_identities is not None else (True if session.get('goalBlocked') is True else None)
-        if session['provider'] == 'claude' and bridge_links.get(key):
-            session['_bridgeSessionID'] = bridge_links[key]
+        if session['provider'] == 'claude':
+            bridge = bridge_links.get(key) or live_bridges.get(session['id'])
+            if bridge:
+                session['_bridgeSessionID'] = bridge
         targets = session_open_urls(session)
         if session['provider'] in ADDITIONAL_PROVIDERS and not session.get('isHelper') and not session.get('parentId'):
             targets = additional_links.get(key)
